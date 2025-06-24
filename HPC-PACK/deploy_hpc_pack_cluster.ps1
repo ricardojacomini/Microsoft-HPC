@@ -109,7 +109,7 @@ function Deploy-HPCPackCluster {
 
 # Main Execution
 $TemplateFileAD = "new-1hn-wincn-ad.json"
-$resourceGroup = "test-hpc-pack"
+$resourceGroup = "tes-hpc-pack"
 $location = "East US"
 $clusterName = "headnode"
 $domainName = "hpc.cluster"
