@@ -35,6 +35,7 @@ function Select-AzSubscriptionContext {
     $selectedSub = Get-AzSubscription | Out-GridView -Title "Select a subscription" -PassThru
     if (-not $selectedSub) {
         Write-Host "`n❌ No subscription selected. Exiting script."
+        Write-Host "Try running: Connect-AzAccount "
         exit 1
     }
     Set-AzContext -SubscriptionId $selectedSub.Id -TenantId $selectedSub.TenantId
