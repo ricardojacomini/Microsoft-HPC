@@ -31,9 +31,9 @@ Follow the instructions in the deployment scripts or templates provided in this 
 
 📁 **[HPC-PACK](./HPC-PACK/)** - Main deployment folder containing all necessary scripts and templates
 
-# Azure ML File System (AMLFS) Deployment Solutions
+# Azure Managed Lustre File System (AMLFS) Deployment
 
-This repository provides comprehensive Bicep templates and automation scripts for deploying Azure ML File Systems (AMLFS) with different security and feature configurations.
+This repository provides comprehensive Bicep templates and automation scripts for deploying Azure Managed Lustre File Systems (AMLFS) with different security and feature configurations.
 
 ## 🚀 Choose Your Deployment Version
 
