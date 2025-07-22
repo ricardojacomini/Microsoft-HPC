@@ -1,0 +1,205 @@
+# Azure Lustre File System (AMLFS) Mount Information
+
+## Resource Details
+- **Resource Group**: aml-rsj-managed-identity-20250721-1521
+- **AMLFS Name**: amlfs-prod-20250721-152206
+- **Location**: East US
+- **Status**: Available
+- **Capacity**: 8.0 TiB
+- **Throughput**: 2000 MB/s
+- **SKU**: AMLFS-Durable-Premium-250
+
+## Mount Information
+- **MGS Address**: 10.242.1.5
+- **File System Name**: lustrefs
+- **Lustre Version**: 2.15
+- **Mount Command**: `mount -t lustre -o noatime,user_xattr,flock 10.242.1.5@tcp0:/lustrefs /<local path>`
+
+## VM Details
+- **VM Name**: amlfs-client
+- **IP Address**: 172.203.149.149
+- **OS**: Ubuntu 24.04 LTS (recommended)
+- **Kernel**: 6.8.0-1030-azure (compatible with Lustre)
+- **SSH Access**: Available (key + password backup: AMLFSClient123!)
+
+## Step-by-Step Mounting Instructions
+
+### 1. SSH to Your VM
+```bash
+ssh -i ~/.ssh/id_rsa azureuser@172.203.149.149
+# or use password: AMLFSClient123!
+```
+
+### 2. Install Prerequisites (if not already done)
+```bash
+sudo apt-get update
+sudo apt-get install -y wget curl build-essential
+```
+
+### 3. Create Mount Point
+```bash
+sudo mkdir -p /amlfs-prod-20250721-152206
+```
+
+### 4. Install Lustre Client (Two-Part Process)
+**Note**: Use the improved installation scripts from the `scripts/` folder for better reliability.
+
+#### Option A: Use Automated Scripts (Recommended)
+```bash
+# Upload scripts from local machine
+scp scripts/kernel-downgrade.sh azureuser@172.203.149.149:~/
+scp scripts/kernel-downgrade-part2.sh azureuser@172.203.149.149:~/  # if available
+
+# On the VM, make executable and run
+chmod +x kernel-downgrade.sh kernel-downgrade-part2.sh
+sudo ./kernel-downgrade.sh
+# System will reboot automatically
+# After reboot, SSH back and run:
+sudo ./kernel-downgrade-part2.sh
+```
+
+#### Option B: Manual Installation (if scripts not available)
+```bash
+# Install build dependencies
+sudo apt-get install -y build-essential linux-headers-$(uname -r)
+
+# Download and install compatible kernel (if needed)
+sudo apt-get install -y linux-image-6.8.0-1030-azure linux-headers-6.8.0-1030-azure
+
+# Reboot to compatible kernel
+sudo reboot
+
+# After reboot, install Lustre client modules
+# (Complex process - use automated scripts when possible)
+```
+
+### 5. Mount the AMLFS
+```bash
+sudo mount -t lustre -o noatime,user_xattr,flock 10.242.1.5@tcp0:/lustrefs /amlfs-prod-20250721-152206
+```
+
+### 6. Verify Mount
+```bash
+df -h /amlfs-prod-20250721-152206
+ls -la /amlfs-prod-20250721-152206
+lfs df /amlfs-prod-20250721-152206
+```
+
+## Troubleshooting Lustre Client Installation
+
+### Option 1: Use Automated Scripts (Recommended)
+The repository includes improved installation scripts in the `scripts/` folder:
+- `scripts/kernel-downgrade.sh` - Part 1: Kernel setup and reboot
+- `scripts/kernel-downgrade-part2.sh` - Part 2: Lustre client installation
+- `scripts/mount-amlfs.sh` - Automated mounting script
+
+### Option 2: Manual Kernel Management
+```bash
+# Check current kernel
+uname -r
+
+# Install compatible kernel (6.8.0-1030-azure)
+sudo apt-get install -y linux-image-6.8.0-1030-azure linux-headers-6.8.0-1030-azure
+
+# Set as default and reboot
+sudo update-grub
+sudo reboot
+```
+
+### Option 3: Build from Source (Advanced)
+```bash
+# Install build dependencies
+sudo apt-get install -y build-essential linux-headers-$(uname -r) dkms
+
+# Download Lustre source (adjust version as needed)
+wget https://downloads.whamcloud.com/public/lustre/lustre-2.15.3/el8.8/client/SRPMS/lustre-2.15.3-1.src.rpm
+
+# Build and install (complex process, use scripts when possible)
+```
+
+### Option 4: Container-Based Access
+If client installation continues to fail:
+```bash
+# Use Docker with pre-built Lustre client
+docker run -it --privileged lustre/client:latest
+```
+
+## Performance Testing Commands
+Once mounted, you can test performance with:
+
+```bash
+# Write test (optimized)
+dd if=/dev/zero of=/amlfs-prod-20250721-152206/perf-test bs=1M count=100 oflag=direct
+
+# Read test (optimized) 
+dd if=/amlfs-prod-20250721-152206/perf-test of=/dev/null bs=1M iflag=direct
+
+# Lustre-specific performance test
+lfs df /amlfs-prod-20250721-152206
+lfs check servers
+
+# Cleanup
+rm /amlfs-prod-20250721-152206/perf-test
+```
+
+## HSM Configuration (Hierarchical Storage Management)
+The HSM configuration is empty in the current deployment. To configure HSM:
+
+1. Set up storage containers/accounts for tiered storage
+2. Configure HSM policies via Azure portal or CLI
+3. Test archive/restore operations
+
+For detailed HSM setup with managed identity, see:
+- `README-managed-identity.md` - Complete HSM configuration guide
+- `scripts/next-steps.ps1` - Automated HSM configuration
+
+## Repository Structure & Automation
+
+This deployment can be managed using the organized repository structure:
+
+### Available Scripts (`scripts/` folder)
+- `Test-AMLFSZones-ManagedIdentity.ps1` - Test deployment zones
+- `next-steps.ps1` - Automated post-deployment configuration
+- `create-vm.ps1` - Automated VM creation
+- `kernel-downgrade.sh` - Lustre client installation (Part 1)
+- `kernel-downgrade-part2.sh` - Lustre client installation (Part 2)
+- `mount-amlfs.sh` - Automated mounting script
+
+### Infrastructure Templates (`templates/` folder)
+- `infra-managed-identity.bicep` - Main deployment template
+- `infra-basic.bicep` - Basic deployment template
+- `infra-managed-identity.json` - Parameters file
+
+### Documentation
+- `README-managed-identity.md` - Complete setup guide
+- `setup-checklist.md` - Step-by-step checklist
+- `scripts/README.md` - Scripts documentation
+
+## Persistent Mount Configuration
+For production use, add to `/etc/fstab`:
+
+```bash
+echo "10.242.1.5@tcp0:/lustrefs /amlfs-prod-20250721-152206 lustre noatime,user_xattr,flock,_netdev 0 0" | sudo tee -a /etc/fstab
+
+# Test auto-mount
+sudo umount /amlfs-prod-20250721-152206
+sudo mount -a
+df -h /amlfs-prod-20250721-152206
+```
+
+## Network Configuration
+- **AMLFS Subnet**: /subscriptions/7bfe6334-68ac-4597-9cd4-59c9ab82e3e0/resourceGroups/aml-rsj-managed-identity-20250721-1521/providers/Microsoft.Network/virtualNetworks/vnet/subnets/amlfs
+- **MGS IP**: 10.242.1.5 (accessible from your VM at 172.203.149.149)
+
+## Managed Identity
+- **Type**: User Assigned
+- **Identity**: amlfs-identity-z7xghrwomjhiw
+- **Purpose**: Enables secure access to Azure resources without storing credentials
+
+## Next Steps
+1. ✅ AMLFS deployed and available
+2. ✅ VM created and accessible
+3. 🟡 Lustre client installation (in progress)
+4. 🔄 Mount AMLFS filesystem
+5. ⏳ Configure HSM (if needed)
+6. ⏳ Performance testing
