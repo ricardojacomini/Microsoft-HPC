@@ -223,6 +223,62 @@ Both templates provide:
 
 ---
 
+## 🎯 When to Choose Lustre for Your Workloads
+
+You'll want to use Lustre when your workloads demand extreme I/O performance, massive parallelism, and low-latency access to large datasets — especially in high-performance computing (HPC) and AI scenarios.
+
+### 🚀 Ideal Use Cases for Lustre
+
+| Scenario | Why Lustre Excels |
+|----------|-------------------|
+| **MPI-based HPC workloads** | Parallel file access with RDMA support |
+| **AI/ML training** | Fast access to large datasets, especially with GPUs |
+| **Genomics & Bioinformatics** | Handles millions of small files with high throughput |
+| **Seismic & CFD simulations** | Sustains multi-GB/s reads/writes across compute nodes |
+| **Financial modeling** | Low-latency access for time-sensitive calculations |
+| **Video rendering & processing** | High bandwidth for large media files |
+
+**💡 Key Insight:** Lustre is designed to keep up with your compute, not slow it down. It's used in supercomputers like Frontier and Fugaku, and powers many of the world's top 100 HPC clusters.
+
+### 🧠 Lustre's Decision Matrix
+
+Since you're already working with MPI, RDMA, and AMLFS:
+- ✅ **Use Lustre (via AMLFS)** when you need parallel I/O across many nodes
+- 📂 **Stick with Managed Disks or NFS** for simpler, single-node workloads  
+- 💰 **Consider Blob integration with AMLFS** to tier cold data cost-effectively
+
+---
+
+## 📚 References
+
+### Official Microsoft Documentation
+- **[Azure Managed Lustre File System Documentation](https://docs.microsoft.com/en-us/azure/azure-managed-lustre/)** - Official Azure AMLFS documentation
+- **[HPC Pack Documentation](https://docs.microsoft.com/en-us/powershell/high-performance-computing/overview)** - Microsoft HPC Pack official guide
+- **[Azure Bicep Documentation](https://docs.microsoft.com/en-us/azure/azure-resource-manager/bicep/)** - Infrastructure as Code with Bicep
+- **[Azure RBAC Documentation](https://docs.microsoft.com/en-us/azure/role-based-access-control/)** - Role-Based Access Control guide
+
+### Lustre File System Resources
+- **[Lustre.org](https://www.lustre.org/)** - Official Lustre project website
+- **[Lustre Operations Manual](https://doc.lustre.org/lustre_manual.xhtml)** - Comprehensive Lustre administration guide
+- **[OpenSFS Foundation](https://www.opensfs.org/)** - Open Scalable File Systems community
+
+### High-Performance Computing References
+- **[Top500 Supercomputers](https://www.top500.org/)** - List of world's fastest supercomputers
+- **[Exascale Computing Project](https://www.exascaleproject.org/)** - US Department of Energy HPC initiative
+- **[OpenMPI Documentation](https://www.open-mpi.org/)** - Message Passing Interface implementation
+
+### Azure Architecture & Best Practices
+- **[Azure Well-Architected Framework](https://docs.microsoft.com/en-us/azure/architecture/framework/)** - Design principles for Azure solutions
+- **[Azure HPC Architecture](https://docs.microsoft.com/en-us/azure/architecture/topics/high-performance-computing)** - HPC patterns and practices
+- **[Azure Storage Performance Guide](https://docs.microsoft.com/en-us/azure/storage/common/storage-performance-checklist)** - Storage optimization strategies
+
+### Community & Support
+- **[Azure HPC Tech Community](https://techcommunity.microsoft.com/t5/azure-high-performance-computing/ct-p/AzureHighPerformanceComputing)** - Microsoft Tech Community for HPC
+- **[Stack Overflow - Azure HPC](https://stackoverflow.com/questions/tagged/azure+hpc)** - Community Q&A for Azure HPC
+- **[GitHub - Azure HPC Examples](https://github.com/Azure/azurehpc)** - Official Azure HPC samples and templates
+
+---
+
 **🌟 Start with the version that matches your needs, and you'll have AMLFS running in minutes!**
 
 **Quick Navigation:**
