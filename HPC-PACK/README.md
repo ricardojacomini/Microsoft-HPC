@@ -32,6 +32,7 @@ Before running this script, ensure the following:
 
 ---
 
+
 ## ⚙️ Script Features
 
 - Interactive Azure subscription selection  
@@ -40,36 +41,25 @@ Before running this script, ensure the following:
 - Resource group validation and recreation  
 - Parameterized deployment using ARM templates  
 - Role assignment for Key Vault access  
-
+- **Automated Virtual Network, subnet, and Network Security Group (NSG) creation for cluster nodes**  
+- **InfiniBand (RDMA) support for HB120rs v3 nodes, including Mellanox WinOF2 driver installation and validation**  
 ---
+
 
 ## 🔑 Key Functions
 
 ### `Grant-KeyVaultAdminAccess`
-
 Assigns the signed-in user the **Key Vault Administrator** role for the Key Vault in the specified resource group.
 
-```powershell
-function Grant-KeyVaultAdminAccess {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$ResourceGroupName
-    )
+### `deploy_hpc_pack_cluster_ib.ps1`
+Automates deployment of an HPC Pack cluster with InfiniBand (IB) support for HB120rs v3 nodes. This script:
 
-    try {
-        $keyVault = Get-AzKeyVault -ResourceGroupName $ResourceGroupName -ErrorAction Stop
-        $scope = $keyVault.ResourceId
-        $objectId = (Get-AzADUser -SignedIn).Id
+- Creates a resource group, Virtual Network, subnet, and NSG with rules for RDP, SMB, and RDMA
+- Deploys HB120rs v3 VMs into the subnet with accelerated networking
+- Installs Mellanox WinOF2 drivers on each node and validates RDMA capability
+- Outputs status for each step and ensures the cluster is RDMA/IB-ready
 
-        Write-Host "🔐 Assigning 'Key Vault Administrator' role to the signed-in user..."
-        New-AzRoleAssignment -ObjectId $objectId -RoleDefinitionName "Key Vault Administrator" -Scope $scope -ErrorAction Stop
-        Write-Host "✅ Role assignment successful for Key Vault: $($keyVault.VaultName)"
-    }
-    catch {
-        Write-Host "❌ Failed to assign Key Vault role: $_"
-    }
-}
-```
+> **Note:** Update the script's network address ranges and admin credentials as needed for your environment.
 
 ---
 
@@ -90,21 +80,31 @@ The script supports the following parameters (defined in the ARM template):
 
 ---
 
+
 ## 🚀 Usage
 
+### For Standard Cluster Deployment
 1. Open PowerShell and run the script.  
 2. Select your Azure subscription from the GUI prompt.  
 3. Enter the admin password when prompted.  
 4. Optionally enter a custom authentication key.  
 5. Monitor deployment progress in the Azure Portal.  
 
+### For InfiniBand/RDMA Cluster Deployment (HB120rs v3)
+1. Edit `deploy_hpc_pack_cluster_ib.ps1` to set your desired resource group, VNet, subnet, and admin credentials.
+2. Run the script in PowerShell.  
+3. The script will create the required network infrastructure, deploy HB120rs v3 VMs, and configure InfiniBand support automatically.  
+4. Monitor deployment and driver installation status in the console and Azure Portal.  
+
 ---
+
 
 ## 📝 Notes
 
-- The script uses `New-AzResourceGroupDeployment` for ARM-based provisioning.  
-- Validation warnings related to nested deployments are expected and safe to ignore.  
-- Monitor deployment status in the Azure Portal under **Resource Group > Deployments**.  
+- The `deploy_hpc_pack_cluster_ib.ps1` script is designed for clusters requiring low-latency, high-throughput networking (RDMA/InfiniBand), such as MPI workloads.
+- The script automates all network and firewall setup for the cluster nodes.
+- Mellanox WinOF2 driver installation and RDMA validation are performed on each node.
+- Monitor deployment status in the Azure Portal under **Resource Group > Deployments** and check VM console output for driver/IB status.
 
 ---
 

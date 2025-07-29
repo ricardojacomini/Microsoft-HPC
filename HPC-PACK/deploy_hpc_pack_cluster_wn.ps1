@@ -1,29 +1,28 @@
 ﻿<#
 .SYNOPSIS
-    Deploys an HPC Pack Cluster in Azure with a single head node for Windows workloads,
-    including the creation of a new Active Directory Domain.
+    Deploys an Azure HPC Pack cluster with a single head node for Windows workloads, including automated creation of a new Active Directory Domain.
 
 .DESCRIPTION
-    This PowerShell script automates the deployment of an HPC Pack cluster in Azure.
-    It provisions a single-head-node cluster optimized for Windows workloads and sets up
-    a new Active Directory domain as part of the deployment.
+    This PowerShell script automates the end-to-end deployment of an HPC Pack cluster in Azure, optimized for Windows-based high-performance computing scenarios. Key features include:
+    - Automated provisioning of a resource group and all required Azure resources
+    - Deployment of a single-head-node cluster with customizable VM sizes and OS images
+    - Creation and configuration of a new Active Directory domain for the cluster
+    - Secure credential handling and optional authentication key override
+    - Optional integration with Azure Key Vault for secrets management
+    - Modular functions for resource group management, subscription selection, and deployment
+    - Clear validation and error handling, with guidance on expected ARM template warnings
 
 .AUTHOR
     Ricardo de Souza Jacomini
+    Microsoft Azure HPC + AI
 
 .DATE
     June 23, 2025
 
-. Microsoft
-    Azure HPC + AI
-
 .NOTES
-    ⚠️ Note on Validation Warnings:
-    The warning "A nested deployment got short-circuited and all its resources got skipped from validation".
-    It is a known behavior of Test-AzResourceGroupDeployment. It occurs when templates use runtime-dependent
-    functions like reference() or resourceId()—especially when referencing outputs from nested deployments
-    or resources not yet created. This is expected in complex templates and does not indicate a failure.
-    You can safely proceed with New-AzResourceGroupDeployment for the actual deployment.
+    - Validation warnings such as "A nested deployment got short-circuited and all its resources got skipped from validation" are expected when using Test-AzResourceGroupDeployment with complex ARM templates. These do not indicate deployment failure.
+    - For production use, review and update parameters such as VM sizes, admin credentials, and domain names as appropriate for your environment.
+    - Monitor deployment progress and status in the Azure Portal under Resource Group > Deployments.
 
 .LINK
     https://aka.ms/hpcgit
@@ -110,7 +109,7 @@ function Deploy-HPCPackCluster {
 
 # Main Execution
 $TemplateFileAD = "new-1hn-wincn-ad.json"
-$resourceGroup = "test-hpc-pack"
+$resourceGroup = "hpcpack-wn-jacomini"
 $location = "East US"
 $clusterName = "headnode"
 $domainName = "hpc.cluster"
