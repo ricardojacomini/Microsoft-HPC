@@ -90,11 +90,19 @@ The script supports the following parameters (defined in the ARM template):
 4. Optionally enter a custom authentication key.  
 5. Monitor deployment progress in the Azure Portal.  
 
+
 ### For InfiniBand/RDMA Cluster Deployment (HB120rs v3)
 1. Edit `deploy_hpc_pack_cluster_ib.ps1` to set your desired resource group, VNet, subnet, and admin credentials.
-2. Run the script in PowerShell.  
-3. The script will create the required network infrastructure, deploy HB120rs v3 VMs, and configure InfiniBand support automatically.  
-4. Monitor deployment and driver installation status in the console and Azure Portal.  
+2. To perform a dry-run (no resources will be created, just validation):
+   ```powershell
+   .\deploy_hpc_pack_cluster_ib.ps1 -DryRun
+   ```
+3. To run the actual deployment:
+   ```powershell
+   .\deploy_hpc_pack_cluster_ib.ps1
+   ```
+4. The script will create the required network infrastructure, deploy HB120rs v3 VMs, and configure InfiniBand support automatically.  
+5. Monitor deployment and driver installation status in the console and Azure Portal.  
 
 ---
 

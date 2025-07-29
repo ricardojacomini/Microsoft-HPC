@@ -136,8 +136,9 @@ function Configure-InfiniBand {
 # Main Execution                  #
 # =============================== #
 
+
 param(
-    [switch]$DryRun
+    [Alias('DryRun')][switch]$WhatIf
 )
 
 # Parameters
@@ -156,6 +157,7 @@ $nsgName = "HPCNSG"
 $driverUrl = "https://content.mellanox.com/WinOF/MLNX_WinOF2-25_4_50020_All_x64.exe"
 $driverInstaller = "WinOF2-latest.exe"
 $downloadPath = "C:\Temp\Infiniband"
+
 
 $selectedSub = Select-AzSubscriptionContext
 Ensure-ResourceGroup -Name $resourceGroup -Location $location -WhatIf:$WhatIf
