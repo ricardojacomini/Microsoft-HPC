@@ -117,6 +117,23 @@ The script supports the following parameters (defined in the ARM template):
 - Mellanox WinOF2 driver installation and RDMA validation are performed on each node.
 - Monitor deployment status in the Azure Portal under **Resource Group > Deployments** and check VM console output for driver/IB status.
 
+## 🔍 InfiniBand Evaluation and Diagnostics
+
+For comprehensive InfiniBand deployment evaluation, refer to **`InfiniBand-Evaluation-Notes.md`** which includes:
+
+- Essential PowerShell commands for RDMA adapter verification
+- Mellanox ConnectX-6 feature analysis and status interpretation
+- Performance tuning considerations (DevX, SR-IOV, QoS)
+- Advanced diagnostic tools and troubleshooting procedures
+- Registry configuration guidance for optimization
+
+Use these diagnostic commands to validate your InfiniBand configuration after deployment:
+```powershell
+Get-NetAdapterRdma
+Get-SmbClientNetworkInterface
+Mlx5Cmd.exe -Features -Name "Ethernet 2"
+```
+
 ---
 
 ## 🔗 Resources
