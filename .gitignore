@@ -1,0 +1,17 @@
+# AI Agent Instructions - Keep local only
+.github/copilot-instructions.md
+
+# Common Azure/PowerShell artifacts
+*.log
+*.tmp
+temp-zone*.bicep
+*.json.bak
+
+# Azure CLI cache
+.azure/
+
+# PowerShell execution policy artifacts
+*.ps1.bak
+
+# VS Code settings (optional - uncomment if needed)
+# .vscode/
