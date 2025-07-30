@@ -1,20 +1,37 @@
 ﻿# Deploy HPC Pack cluster with InfiniBand support for HB120rs v3 nodes
 # Requires Azure PowerShell module: Install-Module -Name Az
 
+param(
+    [Alias('DryRun')][switch]$WhatIf
+)
+
 # =============================== #
 # Function Definitions            #
 # =============================== #
 
+
 function Select-AzSubscriptionContext {
-    Write-Output "Selecting Azure subscription context..."
-    $context = Get-AzContext
-    if (-not $context) {
-        Write-Output "No Azure context found. Please run Connect-AzAccount first."
+    $selectedSub = Get-AzSubscription | Out-GridView -Title "Select a subscription" -PassThru
+    if (-not $selectedSub) {
+        Write-Host "`n❌ No subscription selected. Exiting script."
+        Write-Host "Try running: Connect-AzAccount "
         exit 1
     }
-    Write-Output "Using subscription: $($context.Subscription.Name) ($($context.Subscription.Id))"
-    return $context
+    Set-AzContext -SubscriptionId $selectedSub.Id -TenantId $selectedSub.TenantId
+    return $selectedSub
 }
+
+function Get-AuthenticationKey {
+    param ([string]$SubscriptionId)
+    $authInput = Read-Host -Prompt "Enter authentication key (press Enter to use 'subscriptionId: $SubscriptionId')"
+    if ([string]::IsNullOrWhiteSpace($authInput)) {
+        Write-Host "Using default authentication key: subscriptionId: $SubscriptionId"
+        return ConvertTo-SecureString "subscriptionId: $SubscriptionId" -AsPlainText -Force
+    } else {
+        return ConvertTo-SecureString $authInput -AsPlainText -Force
+    }
+}
+
 
 function Ensure-ResourceGroup {
     param (
@@ -115,9 +132,14 @@ function Deploy-IBVMs {
         # Create VM configuration for HB120rs_v3 with InfiniBand
         $vmConfig = New-AzVMConfig -VMSize $VmSize -VMName $vmName
         $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName -Credential (New-Object PSCredential($AdminUsername, $AdminPassword)) -ProvisionVMAgent -EnableAutoUpdate
-        $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2022-datacenter-smalldisk" -Version "latest"
+        $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2022-datacenter-g2" -Version "latest"
+        
+        # Configure Trusted Launch with disabled features for InfiniBand compatibility
+        $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType "TrustedLaunch"
+        $vmConfig = Set-AzVMUefi -VM $vmConfig -EnableVtpm $false -EnableSecureBoot $false
+        
         $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
-        New-AzVM -ResourceGroupName $ResourceGroup -Location $Location -VM $vmConfig
+        New-AzVM -ResourceGroupName $ResourceGroup -Location $Location -VM $vmConfig -DisableBginfoExtension
     }
 }
 
@@ -154,10 +176,6 @@ Remove-Item '$DownloadPath\$DriverInstaller' -Force
 # Main Execution                  #
 # =============================== #
 
-param(
-    [Alias('DryRun')][switch]$WhatIf
-)
-
 # Parameters
 $resourceGroup = "HPCPack-IB-jacomini"
 $location = "eastus"
@@ -177,6 +195,10 @@ $downloadPath = "C:\Temp\Infiniband"
 
 # Main execution
 $selectedSub = Select-AzSubscriptionContext
+$subscriptionId = $selectedSub.Id
+
+$authenticationKey = Get-AuthenticationKey -SubscriptionId $subscriptionId
+
 Ensure-ResourceGroup -Name $resourceGroup -Location $location -WhatIf:$WhatIf
 $net = Ensure-Network -ResourceGroup $resourceGroup -Location $location -VNetName $vnetName -SubnetName $subnetName -AddressPrefix $addressPrefix -SubnetPrefix $subnetPrefix -NsgName $nsgName -WhatIf:$WhatIf
 Deploy-IBVMs -ResourceGroup $resourceGroup -Location $location -VmPrefix $vmPrefix -VmSize $vmSize -VmCount $vmCount -AdminUsername $adminUsername -AdminPassword $adminPassword -SubnetId $net.SubnetId -Nsg $net.Nsg -WhatIf:$WhatIf
