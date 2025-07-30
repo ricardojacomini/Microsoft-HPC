@@ -84,7 +84,10 @@ The script supports the following parameters (defined in the ARM template):
 ## 🚀 Usage
 
 ### For Standard Cluster Deployment
-1. Open PowerShell and run the script.  
+1. Open PowerShell and run the script:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Unrestricted -File .\deploy_hpc_pack_cluster.ps1
+   ```
 2. Select your Azure subscription from the GUI prompt.  
 3. Enter the admin password when prompted.  
 4. Optionally enter a custom authentication key.  
@@ -95,11 +98,11 @@ The script supports the following parameters (defined in the ARM template):
 1. Edit `deploy_hpc_pack_cluster_ib.ps1` to set your desired resource group, VNet, subnet, and admin credentials.
 2. To perform a dry-run (no resources will be created, just validation):
    ```powershell
-   .\deploy_hpc_pack_cluster_ib.ps1 -DryRun
+   powershell -NoProfile -ExecutionPolicy Unrestricted -File .\deploy_hpc_pack_cluster_ib.ps1 -DryRun
    ```
 3. To run the actual deployment:
    ```powershell
-   .\deploy_hpc_pack_cluster_ib.ps1
+   powershell -NoProfile -ExecutionPolicy Unrestricted -File .\deploy_hpc_pack_cluster_ib.ps1
    ```
 4. The script will create the required network infrastructure, deploy HB120rs v3 VMs, and configure InfiniBand support automatically.  
 5. Monitor deployment and driver installation status in the console and Azure Portal.  

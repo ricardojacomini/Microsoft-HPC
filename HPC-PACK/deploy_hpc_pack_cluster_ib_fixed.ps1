@@ -1,4 +1,4 @@
-﻿# Deploy HPC Pack cluster with InfiniBand support for HB120rs v3 nodes
+# Deploy HPC Pack cluster with InfiniBand support for HB120rs v3 nodes
 # Requires Azure PowerShell module: Install-Module -Name Az
 
 # =============================== #
@@ -6,13 +6,13 @@
 # =============================== #
 
 function Select-AzSubscriptionContext {
-    Write-Output "Selecting Azure subscription context..."
+    Write-Output "🔍 Selecting Azure subscription context..."
     $context = Get-AzContext
     if (-not $context) {
-        Write-Output "No Azure context found. Please run Connect-AzAccount first."
+        Write-Output "❌ No Azure context found. Please run Connect-AzAccount first."
         exit 1
     }
-    Write-Output "Using subscription: $($context.Subscription.Name) ($($context.Subscription.Id))"
+    Write-Output "✅ Using subscription: $($context.Subscription.Name) ($($context.Subscription.Id))"
     return $context
 }
 
@@ -30,10 +30,10 @@ function Ensure-ResourceGroup {
     
     $rg = Get-AzResourceGroup -Name $Name -ErrorAction SilentlyContinue
     if (-not $rg) {
-        Write-Output "Creating resource group: $Name"
+        Write-Output "🏗️ Creating resource group: $Name"
         $rg = New-AzResourceGroup -Name $Name -Location $Location
     } else {
-        Write-Output "Resource group already exists: $Name"
+        Write-Output "✅ Resource group already exists: $Name"
     }
     return $rg
 }
@@ -61,7 +61,7 @@ function Ensure-Network {
     # Create or get NSG with required rules
     $nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $ResourceGroup -Name $NsgName -ErrorAction SilentlyContinue
     if (-not $nsg) {
-        Write-Output "Creating Network Security Group: $NsgName"
+        Write-Output "🔒 Creating Network Security Group: $NsgName"
         $rdpRule = New-AzNetworkSecurityRuleConfig -Name "AllowRDP" -Protocol "Tcp" -Direction "Inbound" -Priority 1000 -SourceAddressPrefix "*" -SourcePortRange "*" -DestinationAddressPrefix "*" -DestinationPortRange "3389" -Access "Allow"
         $smbRule = New-AzNetworkSecurityRuleConfig -Name "AllowSMB" -Protocol "Tcp" -Direction "Inbound" -Priority 1001 -SourceAddressPrefix "VirtualNetwork" -SourcePortRange "*" -DestinationAddressPrefix "*" -DestinationPortRange "445" -Access "Allow"
         $rdmaRule = New-AzNetworkSecurityRuleConfig -Name "AllowRDMA" -Protocol "*" -Direction "Inbound" -Priority 1002 -SourceAddressPrefix "VirtualNetwork" -SourcePortRange "*" -DestinationAddressPrefix "*" -DestinationPortRange "4791" -Access "Allow"
@@ -71,7 +71,7 @@ function Ensure-Network {
     # Create or get VNet
     $vnet = Get-AzVirtualNetwork -ResourceGroupName $ResourceGroup -Name $VNetName -ErrorAction SilentlyContinue
     if (-not $vnet) {
-        Write-Output "Creating Virtual Network: $VNetName"
+        Write-Output "🌐 Creating Virtual Network: $VNetName"
         $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $SubnetName -AddressPrefix $SubnetPrefix -NetworkSecurityGroup $nsg
         $vnet = New-AzVirtualNetwork -ResourceGroupName $ResourceGroup -Location $Location -Name $VNetName -AddressPrefix $AddressPrefix -Subnet $subnetConfig
     }
@@ -104,7 +104,7 @@ function Deploy-IBVMs {
     
     for ($i = 1; $i -le $VmCount; $i++) {
         $vmName = "$VmPrefix$i"
-        Write-Output "Creating VM: $vmName"
+        Write-Output "🖥️ Creating VM: $vmName"
         
         # Create public IP
         $pip = New-AzPublicIpAddress -ResourceGroupName $ResourceGroup -Location $Location -Name "$vmName-pip" -AllocationMethod Static -Sku Standard
@@ -113,10 +113,10 @@ function Deploy-IBVMs {
         $nic = New-AzNetworkInterface -ResourceGroupName $ResourceGroup -Location $Location -Name "$vmName-nic" -SubnetId $SubnetId -PublicIpAddressId $pip.Id -NetworkSecurityGroupId $Nsg.Id -EnableAcceleratedNetworking
         
         # Create VM configuration for HB120rs_v3 with InfiniBand
-        $vmConfig = New-AzVMConfig -VMSize $VmSize -VMName $vmName
-        $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName -Credential (New-Object PSCredential($AdminUsername, $AdminPassword)) -ProvisionVMAgent -EnableAutoUpdate
-        $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2022-datacenter-smalldisk" -Version "latest"
-        $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
+        $vmConfig = New-AzVMConfig -VMSize $VmSize -AvailabilitySetId $null |
+            Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential (New-Object PSCredential($AdminUsername, $AdminPassword)) -ProvisionVMAgent -EnableAutoUpdate |
+            Set-AzVMSourceImage -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2022-datacenter-smalldisk" -Version "latest" |
+            Add-AzVMNetworkInterface -Id $nic.Id
         New-AzVM -ResourceGroupName $ResourceGroup -Location $Location -VM $vmConfig
     }
 }
@@ -133,20 +133,21 @@ function Configure-InfiniBand {
     
     for ($i = 1; $i -le $VmCount; $i++) {
         $vmName = "$VmPrefix$i"
-        Write-Output "Configuring InfiniBand support on $vmName..."
+        Write-Output "🔧 Configuring InfiniBand support on $vmName..."
         
-        $scriptContent = @"
+        $scriptBlock = @"
 if (!(Test-Path '$DownloadPath')) { New-Item -ItemType Directory -Path '$DownloadPath' -Force }
 Invoke-WebRequest -Uri '$DriverUrl' -OutFile '$DownloadPath\$DriverInstaller'
 Start-Process -FilePath '$DownloadPath\$DriverInstaller' -ArgumentList '/S /v/qn' -Wait
 `$check = Get-WmiObject Win32_PnPSignedDriver | Where-Object { `$_.DeviceName -like '*Mellanox*' }
-if (`$check) { Write-Output 'Driver installed on $vmName.' } else { Write-Error 'Driver install failed on $vmName.' }
+if (`$check) { Write-Output '✅ Driver installed on $vmName.' } else { Write-Error '❌ Driver install failed on $vmName.' }
+# Validate RDMA capability
 `$rdma = Get-NetAdapterRdma | Where-Object { `$_.Enabled -eq `$true }
-if (`$rdma) { Write-Output 'RDMA is enabled on $vmName.' } else { Write-Error 'RDMA not enabled on $vmName.' }
+if (`$rdma) { Write-Output '✅ RDMA is enabled on $vmName.' } else { Write-Error '❌ RDMA not enabled on $vmName.' }
 Remove-Item '$DownloadPath\$DriverInstaller' -Force
 "@
         
-        Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroup -Name $vmName -CommandId 'RunPowerShellScript' -ScriptString $scriptContent
+        Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroup -Name $vmName -CommandId 'RunPowerShellScript' -ScriptString $scriptBlock
     }
 }
 
@@ -188,4 +189,4 @@ if (-not $WhatIf) {
 }
 
 Write-Output ""
-Write-Output "HPC Pack cluster deployed with RDMA/InfiniBand enabled on HB120rs v3 nodes."
+Write-Output "🎉 HPC Pack cluster deployed with RDMA/InfiniBand enabled on HB120rs v3 nodes."
