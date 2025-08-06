@@ -1,0 +1,130 @@
+https://learn.microsoft.com/en-us/powershell/high-performance-computing/system-requirements-for-hpc-pack?view=hpc19-ps
+https://learn.microsoft.com/en-us/powershell/high-performance-computing/step-5-add-linux-nodes-to-the-cluster?view=hpc19-ps
+
+https://scorm.platform.qa.com/courses/1854/a6350796-6a76-472f-ab55-5438a3253917/1/story_content/external_files/Module_5_LabGuide_AddingLinuxComputeNodes.pdf
+
+timedatectl set-timezone America/New_York
+
+mount -t cifs //jacomini-vm-hpc/smbshare /smbshare/ -o vers=2.1,domain=teja,username=hpcadmin,password='T@is2304998',dir_mode=0777,file_mode=0777 
+mount -t cifs //jacomini-vm-hpc/smbshare /smbshare/ -o vers=2.1,domain=teja,username=hpcadmin,dir_mode=0777,file_mode=0777 
+
+mount -t cifs //headnode/smbshare /smbshare/ -o vers=2.1,domain=hpc.cluster,username=hpcadmin,dir_mode=0777,file_mode=0777 
+
+
+699c933'
+
+python3 /var/lib/waagent/Microsoft.HpcPack.LinuxNodeAgent2016U1-16.3.8329.0/./hpcnodemanager.py daemon
+
+
+# run it on headnode
+get-hpcclusterregistry -propertyname clusterauthenticationkey
+python3 setup.py -install -connectionstring:'headnode' -certfile:'HpcCnCommunication.pfx' -authenticationkey:'3aef5dc3-67a4-4779-aee1-2213b699c933'
+
+python3 setup.py -install -connectionstring:'jacomini-vm-hn' -certfile:'HpcCnCommunication.pfx' -managehosts
+
+/var/log/azure/Microsoft.HpcPack.LinuxNodeAgent2016U1/extension.log
+
+openssl x509 -in /usr/local/share/ca-certificates/HpcHnPublicCert.crt -noout -text -fingerprint -sha1
+curl -vk https://HEADNODE:443/HpcNaming/api/fabric/resolve/singleton/MonitoringStatefulService --cert /opt/hpcnodemanager/certs/nodemanager.crt --key /opt/hpcnodemanager/certs/nodemanager.key
+
+python3 setup.py -install -connectionstring:'headnode' -certfile:'HpcCnCommunication.pfx' -managehosts
+python3 setup.py -uninstall
+
+#Compare serial and thumbprint
+openssl x509 -in /etc/ssl/certs/HpcHnPublicCert.pem  -noout -text -fingerprint -sha1
+openssl x509 -in HpcHnPublicCert.cer -noout -text -fingerprint -sha1
+openssl x509 -in HpcCnCommunication.pfx -noout -text -fingerprint -sha1
+
+
+python3 /var/lib/waagent/Microsoft.HpcPack.LinuxNodeAgent2016U1-16.3.8329.0/./hpcnodemanager.py daemon
+
+
+
+openssl x509 -in /opt/hpcnodemanager/certs/nodemanager.crt -noout -fingerprint -sha1
+
+openssl x509 -in /smbshare/HpcHnPublicCert.cer -out /usr/local/share/ca-certificates/HpcHnPublicCert.crt
+
+# Convert the .cer file to .crt (if needed) (PEM format (starts with -----BEGIN CERTIFICATE-----)
+openssl x509 -inform DER -in HpcHnPublicCert.cer -out HpcHnPublicCert.crt
+
+# What is a .pfx file?
+A .pfx (or .p12) file is a PKCS#12 archive that contains:
+
+The certificate (public key)
+The private key
+Optionally, the certificate chain
+
+# ✅ How to inspect a .pfx file
+To view its contents, use openssl:
+
+openssl pkcs12 -in HpcCnCommunication.pfx -nodes
+
+openssl s_client -connect 10.0.0.4:443 -tls1_2
+openssl s_client -connect 10.0.0.4:443 -showcerts
+
+ openssl x509 -in r  -noout -fingerprint -sha1
+
+cat nodemanager.json | jq
+
+#Alma /RHEL
+rm /etc/pki/ca-trust/source/anchors/HpcHnPublicCert.cer 
+cp HpcHnPublicCert.cer /etc/pki/ca-trust/source/anchors/HpcHnPublicCert.crt
+update-ca-trust
+update-ca-trust extract
+trust list | grep -i hpc
+    label: Microsoft HPC Pack Node Communication
+
+
+cp HpcHnPublicCert.cer /usr/local/share/ca-certificates/HpcHnPublicCert.crt
+update-ca-certificates
+rm /usr/local/share/ca-certificates/HpcHnPublicCert.crt
+update-ca-certificates --fresh
+cp HpcHnPublicCert.cer /usr/local/share/ca-certificates/HpcHnPublicCert.crt
+update-ca-certificates
+
+https://github.com/Azure-Samples/hpcpack-samples
+
+Debug
+https://github.com/Azure/hpcpack/blob/master/kb/000000_How%20to%20collect%20HPC%20Pack%20logs.md
+
+
+Authentication Key: uMDZyuzmvrSSc8PY6SsC
+hpcadmin   T@is23041998
+
+
+Submit a Job to That Group via PowerShell
+$job = New-HpcJob -Name "LinuxTestJob" -MinCores 1 -MaxCores 1 -RequestedNodes "LinuxNodes"
+Add-HpcTask -JobId $job.Id -CommandLine "/bin/hostname"
+Submit-HpcJob -Id $job.Id
+
+(gdb) thread apply all bt
+ sudo tcpdump -i eth0 '(dst port 443 and outbound) or ((src port 40000 or src port 40002) and inbound)'
+
+sudo tcpdump -i eth0 '(src port 40000 or src port 40002) or (dst port 443)'
+
+
+PS C:\Users\hpcadmin.headnode> Test-NetConnection -ComputerName  IaaSCN101 -Port 40002
+
+
+ComputerName     : IaaSCN101
+RemoteAddress    : 10.0.0.7
+RemotePort       : 40002
+InterfaceAlias   : Enterprise
+SourceAddress    : 10.0.0.6
+TcpTestSucceeded : True
+
+🔍 Where to Look for Installation Logs
+The installation logs for HPC Pack are typically located in:
+
+C:\Windows\Temp\HPCSetupLogs\HPCSetupLogs-20250703-224204
+
+
+Where to find installation date source in Windows Programs and Features?
+Suggested insight
+
+The installation date source in Windows Programs and Features can be found in the registry keys:
+
+- HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall
+- HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
+
+The InstallDate registry value is used to track the installation date of applications. If this value is missing or modified, it can cause the installation date to display incorrectly in Programs and Features .

@@ -1,0 +1,104 @@
+Add owner to storageaccount role after create vault key and  userMiForNewCert to resource
+
+Verify that the appropriate role assignments are in place, such as "Storage Blob Data Owner" or "Storage Blob Data Contributor".
+
+
+ assigning encryption keys to a storage account via Key Vault, which requires specific crypto roles due to security separation
+
+🔐 Assign the Key Vault Crypto Service Encryption User role
+This role permits your identity (or your storage account’s managed identity) to wrap and unwrap keys, which is essential for customer-managed encryption.
+- Go to the Key Vault → Access Control (IAM)
+- Click + Add → Add role assignment
+- Select:
+- Role: Key Vault Crypto Service Encryption User
+- Assignable to: Your user account or the managed identity tied to the storage account
+- Click Save, then retry the encryption key assignment
+
+Then create the containers:
+
+amlfs-container
+logging-amlfs-container
+
+
+az storage container show \
+  --name amlfs-container \
+  --account-name storageamlaccount
+
+az storage container create \
+  --name amlfs-container \
+  --account-name storageamlaccount \
+  --auth-mode login
+
+az storage container create \
+  --name logging-amlfs-container \
+  --account-name storageamlaccount \
+  --auth-mode login
+
+az role assignment create \
+  --role "Storage Blob Data Contributor" \
+  --assignee-object-id 1b80c467-56e4-427b-bd09-a03c724ca60c \
+  --scope "/subscriptions/7bfe6334-68ac-4597-9cd4-59c9ab82e3e0/resourceGroups/aml/providers/Microsoft.Storage/storageAccounts/storageamlaccount/blobServices/default/containers/amlfs-container"
+
+az role assignment create \
+  --role "Storage Blob Data Reader" \
+  --assignee-object-id 1b80c467-56e4-427b-bd09-a03c724ca60c \
+  --scope "/subscriptions/7bfe6334-68ac-4597-9cd4-59c9ab82e3e0/resourceGroups/aml/providers/Microsoft.Storage/storageAccounts/storageamlaccount/blobServices/default/containers/amlfs-container"
+
+az role assignment create \
+  --role "Storage Blob Data Contributor" \
+  --assignee-object-id 1b80c467-56e4-427b-bd09-a03c724ca60c \
+  --scope "/subscriptions/7bfe6334-68ac-4597-9cd4-59c9ab82e3e0/resourceGroups/aml/providers/Microsoft.Storage/storageAccounts/storageamlaccount/blobServices/default/containers/logging-amlfs-container"
+
+az role assignment create \
+  --role "Storage Blob Data Reader" \
+  --assignee-object-id 1b80c467-56e4-427b-bd09-a03c724ca60c \
+  --scope "/subscriptions/7bfe6334-68ac-4597-9cd4-59c9ab82e3e0/resourceGroups/aml/providers/Microsoft.Storage/storageAccounts/storageamlaccount/blobServices/default/containers/logging-amlfs-container"
+
+validate The object ID of the managed identit
+
+az identity list --resource-group aml --query "[].{Name:name, ObjectID:principalId}" --output table
+Name              ObjectID
+----------------  ------------------------------------
+userMiForNewCert  1b80c467-56e4-427b-bd09-a03c724ca60c
+
+az role assignment create \
+  --assignee-object-id 1b80c467-56e4-427b-bd09-a03c724ca60c \
+  --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/7bfe6334-68ac-4597-9cd4-59c9ab82e3e0/resourceGroups/aml/providers/Microsoft.Storage/storageAccounts/storageamlaccount"
+
+az network vnet subnet update \
+  --name default \
+  --vnet-name  amlvnet  \
+  --resource-group aml \
+  --delegations Microsoft.Lustre/fileSystems
+
+az network vnet subnet update \
+  --name default \
+  --vnet-name amlvnet \
+  --resource-group aml \
+  --remove delegations
+---------------
+
+# TODO: set the account name and container name below
+account_name=storageaccountamlfs 
+container_name=amlfs-container
+
+start_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+expiry_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ" --date "next month")
+
+az storage container generate-sas \
+   --account-name $account_name \
+   --name $container_name \
+   --permissions rwld \
+   --start $start_date \
+   --expiry $expiry_date \
+   -o tsv
+
+# TODO: set the variable below
+resource_group=aml
+vnet_name=amlvnt
+subnet_name=default
+
+az network vnet subnet show --resource-group $resource_group --vnet-name $vnet_name --name $subnet_name --query id --output tsv
+
+

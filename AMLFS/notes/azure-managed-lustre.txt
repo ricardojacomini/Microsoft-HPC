@@ -1,0 +1,392 @@
+az vm image list --publisher AlmaLinux --offer AlmaLinux --all -o table
+
+az vm image list --publisher "RedHat" --offer "RHEL" --all --output table
+
+az vm image list --publisher "Ubuntu" --offer "RHEL" --all --output table
+
+
+# Get mount address from our deployment
+
+
+https://learn.microsoft.com/en-us/azure/azure-managed-lustre/client-install?pivots=ubuntu-24
+
+az vm create --resource-group "aml-rsj-managed-identity-20250721-1521" --name "amlfs-ubuntu2404-client" --image "Ubuntu2404" --size "Standard_D2s_v5" --vnet-name "vnet" --subnet "amlfs" --generate-ssh-keys --public-ip-sku Standard
+
+
+az vm user update \
+  --resource-group aml-rsj-managed-identity-20250721-1521 \
+  --name amlfs-ubuntu2404-client \
+  --username ricardodeso \
+  --ssh-key-value "$(cat ~/.ssh/id_rsa.pub)"
+
+ssh -i ~/.ssh/id_rsa ricardodeso@4.246.150.68
+
+
+Install Lustre client software to the current version and Ubuntu Kernel Downgrade for AMLFS Lustre Support
+
+Login into VM ubuntu 2024
+
+cat <<'EOF' > repo.bash
+#!/bin/bash
+set -ex
+
+apt update && apt install -y ca-certificates curl apt-transport-https lsb-release gnupg
+source /etc/lsb-release
+echo "deb [arch=amd64] https://packages.microsoft.com/repos/amlfs-${DISTRIB_CODENAME}/ ${DISTRIB_CODENAME} main" | tee /etc/apt/sources.list.d/amlfs.list
+curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
+
+apt update
+EOF
+
+
+#  Run the Script with bash, Not sh
+
+$ sudo bash repo.bash
+
+apt update
+
+sudo apt update && sudo apt install linux-image-azure-lts-24.04
+
+grep -E "menuentry '" /boot/grub/grub.cfg | cut -d "'" -f2
+Ubuntu
+Ubuntu
+Ubuntu, with Linux 6.8.0-1031-azure
+Ubuntu, with Linux 6.8.0-1031-azure (recovery mode)
+Ubuntu, with Linux 6.8.0-1014-azure
+Ubuntu, with Linux 6.8.0-1014-azure (recovery mode)
+
+UEFI Firmware Settings
+
+# Set the default to boot the Ubuntu, with Linux 6.8.0-1031-azure
+# The format is "submenu_number>entry_number" (counting from 0)
+sed -i 's/GRUB_DEFAULT=.*/GRUB_DEFAULT="1>2"/' /etc/default/grub
+
+sudo update-grub
+sudo reboot
+
+uname -r
+6.8.0-1014-azure
+
+sudo apt install amlfs-lustre-client-2.16.1-14-gbc76088=$(uname -r)
+
+
+# The following command installs a metapackage that keeps the version of Lustre aligned with the installed kernel. For this alignment to work, you must use apt full-upgrade instead of apt upgrade when updating your system.
+
+# If there are dependency issues, fix them
+apt-get install -f -y
+
+# remove packages are no longer required
+apt autoremove -y
+
+# Load the Lustre kernel modules
+modprobe lnet
+modprobe lustre
+
+# Check if modules are loaded successfully
+lsmod | grep -E "(lustre|lnet)"
+
+
+
+az vm show --resource-group "aml-rsj-managed-identity-20250721-1521" --name "amlfs-ubuntu2404-client" --query "osProfile.linuxConfiguration.ssh.publicKeys[0].path" -o tsv
+
+ssh -i $env:USERPROFILE\.ssh\id_rsa -o StrictHostKeyChecking=no ricardodeso@172.190.134.25
+
+az vm run-command invoke --resource-group "aml-rsj-managed-identity-20250721-1521" --name "amlfs-almalinux-client" --command-id RunShellScript --scripts "echo '%wheel ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers.d/wheel-nopasswd && echo 'Passwordless sudo configured for wheel group'"
+
+az vm run-command invoke --resource-group "aml-rsj-managed-identity-20250721-1521" --name "amlfs-almalinux-client" --command-id RunShellScript --scripts "echo 'Installing EPEL repository...'; dnf install -y epel-release; echo 'EPEL installation complete'; echo 'Installing Lustre client packages...'; dnf install -y lustre-client; echo 'Lustre client installation complete'; echo 'Checking available Lustre packages...'; dnf search lustre"
+
+
+az vm run-command invoke --resource-group "aml-rsj-managed-identity-20250721-1521" --name "amlfs-almalinux-client" --command-id RunShellScript --scripts "echo 'Testing connectivity to AMLFS MGS...'; ping -c 3 10.242.1.5; echo 'Testing TCP port 988...'; nc -zv 10.242.1.5 988 2>&1 || echo 'netcat not available, trying telnet...'; echo 'q' | timeout 5 telnet 10.242.1.5 988 2>&1 || echo 'Connection test complete'"
+
+
+az vm image show --urn "almalinux:almalinux-x86_64:9-gen2:9.6.202505220"
+
+
+az vm list --resource-group "aml-rsj-managed-identity-20250721-1521" -o table
+
+az network nic list --resource-group "aml-rsj-managed-identity-20250721-1521" -o table
+
+az network nic show --resource-group "aml-rsj-managed-identity-20250721-1521" --name "amlfs-almalinux-clientVMNic" --query "networkSecurityGroup.id" -o tsv
+
+
+az network nic show --resource-group "aml-rsj-managed-identity-20250721-1521" --name "amlfs-almalinux-clientVMNic" --query "networkSecurityGroup.id" -o tsv
+
+az network nsg rule create --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "amlfs-almalinux-clientNSG" --name "AllowICMPInbound" --protocol Icmp --priority 200 --source-address-prefixes "*" --source-port-ranges "*" --destination-address-prefixes "*" --destination-port-ranges "*" --access Allow --direction Inbound
+
+az network nsg rule create --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "amlfs-almalinux-clientNSG" --name "AllowLustreTCPInbound" --protocol Tcp --priority 210 --source-address-prefixes "*" --source-port-ranges "*" --destination-address-prefixes "*" --destination-port-ranges "988" --access Allow --direction Inbound
+
+az network nsg rule create --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "amlfs-almalinux-clientNSG" --name "AllowLustrePortRangeInbound" --protocol Tcp --priority 220 --source-address-prefixes "*" --source-port-ranges "*" --destination-address-prefixes "*" --destination-port-ranges "1023-1024" --access Allow --direction Inbound
+
+az network nsg rule create --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "amlfs-almalinux-clientNSG" --name "AllowRPCInbound" --protocol Tcp --priority 230 --source-address-prefixes "*" --source-port-ranges "*" --destination-address-prefixes "*" --destination-port-ranges "111" --access Allow --direction Inbound
+
+
+az network nsg rule create --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "amlfs-almalinux-clientNSG" --name "AllowSubnetOutbound" --protocol "*" --priority 200 --source-address-prefixes "*" --source-port-ranges "*" --destination-address-prefixes "10.242.1.0/24" --destination-port-ranges "*" --access Allow --direction Outbound
+
+az network vnet list --resource-group "aml-rsj-managed-identity-20250721-1521" -o table
+
+az network vnet subnet list --resource-group "aml-rsj-managed-identity-20250721-1521" --vnet-name "vnet" -o table
+
+az network vnet subnet show --resource-group "aml-rsj-managed-identity-20250721-1521" --vnet-name "vnet" --name "main" --query "networkSecurityGroup.id" -o tsv
+
+az network nsg rule list --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "nsg-common" --query "[?name=='AllowICMPInbound' || name=='AllowLustreTCPInbound' || name=='AllowLustrePortRangeInbound' || name=='AllowRPCInbound'].{Name:name, Priority:priority, Access:access, Protocol:protocol, DestinationPortRange:destinationPortRange}" -o table
+
+az network nsg rule create --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "nsg-common" --name "AllowICMPInbound" --protocol Icmp --priority 200 --source-address-prefixes "*" --source-port-ranges "*" --destination-address-prefixes "*" --destination-port-ranges "*" --access Allow --direction Inbound
+
+
+az network nsg rule create --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "nsg-common" --name "AllowLustreTCPInbound" --protocol Tcp --priority 210 --source-address-prefixes "*" --source-port-ranges "*" --destination-address-prefixes "*" --destination-port-ranges "988" --access Allow --direction Inbound; az network nsg rule create --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "nsg-common" --name "AllowLustrePortRangeInbound" --protocol Tcp --priority 220 --source-address-prefixes "*" --source-port-ranges "*" --destination-address-prefixes "*" --destination-port-ranges "1023-1024" --access Allow --direction Inbound; az network nsg rule create --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "nsg-common" --name "AllowRPCInbound" --protocol Tcp --priority 230 --source-address-prefixes "*" --source-port-ranges "*" --destination-address-prefixes "*" --destination-port-ranges "111" --access Allow --direction Inbound
+
+az network nsg rule create --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "nsg-common" --name "AllowSubnetOutbound" --protocol "*" --priority 200 --source-address-prefixes "*" --source-port-ranges "*" --destination-address-prefixes "10.242.1.0/24" --destination-port-ranges "*" --access Allow --direction Outbound
+
+
+
+az network nsg rule list --resource-group "aml-rsj-managed-identity-20250721-1521" --nsg-name "amlfs-almalinux-clientNSG" --query "[].{Name:name, Priority:priority, Protocol:protocol, Access:access, Direction:direction, DestinationPortRange:destinationPortRange}" -o table
+
+
+az vm show --resource-group "aml-rsj-managed-identity-20250721-1521" --name "amlfs-almalinux-client" --query "networkProfile.networkInterfaces[0].id" -o tsv
+
+
+
+
+
+
+
+# Create the test script
+cat > test-mount.sh << 'EOF'
+#!/bin/bash
+# Quick AMLFS Mount Test Script
+
+echo "🔍 Testing AMLFS connectivity and mount..."
+echo "==========================================="
+
+# Check network connectivity to AMLFS MGS
+echo "1. Testing connectivity to AMLFS MGS (10.242.1.5)..."
+if ping -c 3 10.242.1.5 > /dev/null 2>&1; then
+    echo "✅ Ping to 10.242.1.5 successful"
+else
+    echo "❌ Ping to 10.242.1.5 failed"
+    echo "   Check network configuration and security groups"
+    exit 1
+fi
+
+# Check if mount point exists
+echo "2. Preparing mount point..."
+sudo mkdir -p /mnt/amlfs
+echo "✅ Mount point /mnt/amlfs ready"
+
+# Try to mount
+echo "3. Attempting to mount AMLFS..."
+echo "   Command: sudo mount -t lustre -o noatime,user_xattr 10.242.1.5@tcp0:/lustrefs /mnt/amlfs"
+
+if sudo mount -t lustre -o noatime,user_xattr 10.242.1.5@tcp0:/lustrefs /mnt/amlfs; then
+    echo "✅ AMLFS mounted successfully!"
+    echo ""
+    echo "📊 Mount verification:"
+    df -h /mnt/amlfs
+    echo ""
+    echo "📁 Directory listing:"
+    ls -la /mnt/amlfs
+    echo ""
+    echo "🎉 AMLFS is ready for use at /mnt/amlfs"
+else
+    echo "❌ Mount failed. Checking possible causes..."
+    
+    # Check if lustre modules are loaded
+    echo "   Checking Lustre kernel modules..."
+    if lsmod | grep -q lustre; then
+        echo "   ✅ Lustre modules are loaded"
+    else
+        echo "   ❌ Lustre modules not found"
+        echo "   This is likely the issue. Lustre client needs to be installed."
+        
+        echo ""
+        echo "🔧 Troubleshooting steps:"
+        echo "1. Check kernel version: uname -r"
+        echo "2. Try installing: sudo apt-get install lustre-client-modules-\$(uname -r)"
+        echo "3. If not available, consider:"
+        echo "   - Using CentOS/RHEL VM instead"
+        echo "   - Building Lustre from source"
+        echo "   - Using NFS access (if supported)"
+        
+        echo ""
+        echo "📋 Your system info:"
+        echo "   Kernel: $(uname -r)"
+        echo "   OS: $(lsb_release -d | cut -f2)"
+        echo "   IP: $(hostname -I | awk '{print $1}')"
+    fi
+fi
+EOF
+
+# Make it executable and run
+chmod +x test-mount.sh
+./test-mount.sh
+
+
+# Create and run the updated network test script
+cat > network-test.sh << 'EOF'
+#!/bin/bash
+# AMLFS Network Test - Quick Version
+
+echo "🔧 Testing AMLFS connectivity after NSG fix..."
+echo "============================================="
+
+# Wait for NSG rules to propagate
+echo "⏳ Waiting 10 seconds for network rules to apply..."
+sleep 10
+
+echo "🔍 Testing ping to AMLFS MGS (10.242.1.5)..."
+if ping -c 3 10.242.1.5; then
+    echo "✅ Ping successful!"
+    
+    # Try the mount
+    echo ""
+    echo "🔍 Attempting AMLFS mount..."
+    sudo mkdir -p /mnt/amlfs
+    
+    if sudo mount -t lustre -o noatime,user_xattr 10.242.1.5@tcp0:/lustrefs /mnt/amlfs; then
+        echo "✅ AMLFS mounted successfully!"
+        df -h /mnt/amlfs
+        ls -la /mnt/amlfs
+    else
+        echo "❌ Mount failed (likely missing Lustre client)"
+        echo "Error details:"
+        dmesg | tail -5
+    fi
+else
+    echo "❌ Ping still failing - may need more time for NSG propagation"
+fi
+EOF
+
+chmod +x network-test.sh
+./network-test.sh
+
+# Create and run complete network diagnostic
+cat > full-diagnostic.sh << 'EOF'
+#!/bin/bash
+# AMLFS Network Diagnostic - Quick Version
+
+echo "🔧 AMLFS Network Diagnostics - $(date)"
+echo "======================================"
+
+# Wait longer for NSG propagation
+echo "⏳ Waiting 15 seconds for NSG rules to fully propagate..."
+sleep 15
+
+echo "🔍 Network Info:"
+echo "  VM IP: $(hostname -I | awk '{print $1}')"
+echo "  Target: 10.242.1.5"
+echo ""
+
+echo "🔍 Testing ping with timeout..."
+if timeout 10 ping -c 3 -W 2 10.242.1.5; then
+    echo "✅ PING SUCCESSFUL!"
+    
+    echo ""
+    echo "🔍 Testing Lustre ports..."
+    for port in 111 988 1023; do
+        echo -n "  Port $port: "
+        timeout 3 nc -z 10.242.1.5 $port && echo "✅" || echo "❌"
+    done
+    
+    echo ""
+    echo "🎯 Ready to mount! Try:"
+    echo "  sudo mkdir -p /mnt/amlfs"
+    echo "  sudo mount -t lustre -o noatime,user_xattr 10.242.1.5@tcp0:/lustrefs /mnt/amlfs"
+else
+    echo "❌ Ping still failing"
+    echo ""
+    echo "🔍 Basic diagnostics:"
+    echo "  Gateway test:"
+    timeout 5 ping -c 1 10.242.1.1 && echo "  ✅ Gateway OK" || echo "  ❌ Gateway issue"
+    
+    echo "  Self-ping test:"
+    timeout 5 ping -c 1 $(hostname -I | awk '{print $1}') && echo "  ✅ Self OK" || echo "  ❌ Self issue"
+    
+    echo ""
+    echo "💡 Wait 5-10 more minutes for NSG propagation, then retry"
+fi
+EOF
+
+chmod +x full-diagnostic.sh
+./full-diagnostic.sh
+
+# Create and run direct connection test (bypasses ping)
+cat > direct-test.sh << 'EOF'
+#!/bin/bash
+echo "🔧 Testing AMLFS Direct Connection (bypass ping)"
+echo "==============================================="
+
+echo "🎯 Architecture:"
+echo "  VM: $(hostname -I | awk '{print $1}') (your client)"  
+echo "  MGS: 10.242.1.5 (management server)"
+echo "  OSS: 10.242.1.7 (object storage)"
+echo ""
+
+echo "🔍 Testing Lustre TCP ports (more important than ping):"
+echo "MGS Lustre port 988:"
+timeout 5 nc -zv 10.242.1.5 988 && echo "✅ MGS accessible" || echo "❌ MGS blocked"
+
+echo "MGS RPC port 111:"
+timeout 5 nc -zv 10.242.1.5 111 && echo "✅ RPC accessible" || echo "❌ RPC blocked"
+
+echo ""
+echo "🎯 Direct mount attempt (ignoring ping failure):"
+sudo mkdir -p /mnt/amlfs
+
+if sudo mount -t lustre -o noatime,user_xattr 10.242.1.5@tcp0:/lustrefs /mnt/amlfs; then
+    echo "🎉 SUCCESS! AMLFS mounted!"
+    df -h /mnt/amlfs
+    ls -la /mnt/amlfs
+else
+    echo "❌ Mount failed - checking error:"
+    sudo mount -t lustre -o noatime,user_xattr 10.242.1.5@tcp0:/lustrefs /mnt/amlfs 2>&1 | head -3
+    
+    echo ""
+    echo "💡 If you see 'unknown filesystem' - Lustre client needs installation"
+    echo "💡 If you see 'connection refused' - NSG rules still propagating"
+fi
+
+# Install tools for debugging
+sudo apt-get update -qq && sudo apt-get install -y net-tools netcat-openbsd
+EOF
+
+chmod +x direct-test.sh
+./direct-test.sh
+
+# Create and run the kernel analysis script
+cat > check-kernels.sh << 'EOF'
+#!/bin/bash
+echo "🔍 Kernel and Lustre Package Analysis"
+echo "===================================="
+
+echo "Current kernel: $(uname -r)"
+echo ""
+
+echo "Available Azure kernels:"
+apt search linux-image-.*azure 2>/dev/null | grep -v "WARNING" | grep "linux-image-[0-9]" | head -5
+
+echo ""
+echo "Available Lustre packages:"
+apt search lustre-client-modules 2>/dev/null | grep -v "WARNING" | head -5
+
+echo ""
+echo "Installed kernels:"
+dpkg -l | grep linux-image | awk '{print $2, $3}'
+
+echo ""
+echo "🎯 Quick test - checking for common working kernel versions:"
+
+# Check specific kernel versions known to work with Lustre
+for version in "5.15.0" "5.4.0" "5.11.0"; do
+    echo -n "  Kernel $version: "
+    if apt-cache search linux-image-$version.*azure | grep -q linux-image; then
+        echo "Available"
+    else
+        echo "Not found"
+    fi
+done
+EOF
+
+chmod +x check-kernels.sh
+./check-kernels.sh
+
+

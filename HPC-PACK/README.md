@@ -134,6 +134,41 @@ Get-SmbClientNetworkInterface
 Mlx5Cmd.exe -Features -Name "Ethernet 2"
 ```
 
+## ⚡ ARM Template Customizations
+
+### **Standard SKU Public IP Support**
+
+The `new-1hn-wincn-ad.json` ARM template has been **customized** to use **Standard SKU** public IP addresses instead of Basic SKU:
+
+#### **What was changed:**
+```json
+// ADDED Standard SKU configuration:
+"sku": {
+  "name": "Standard",
+  "tier": "Regional"
+},
+// CHANGED allocation method:
+"publicIPAllocationMethod": "Static"  // was "Dynamic"
+```
+
+#### **Benefits of Standard SKU:**
+- ✅ **Higher quota availability** - 1000+ per region vs 0 for Basic in many regions
+- ✅ **Static IP addresses** - IP doesn't change when VM restarts
+- ✅ **99.99% SLA** availability guarantee  
+- ✅ **Secure by default** - Requires explicit NSG rules for inbound traffic
+- ✅ **Full availability zone support**
+- ✅ **Available in all Azure regions**
+
+#### **Cost Impact:**
+- 💰 **Additional cost**: ~$3.65/month per Standard public IP
+- 📊 **For typical deployment**: 1 head node = ~$3.65/month additional cost
+
+#### **Security Note:**
+Standard SKU public IPs are **secure by default**, meaning inbound traffic is denied unless explicitly allowed via Network Security Group (NSG) rules. This provides better security than Basic SKU which was open by default.
+
+#### **Regional Deployment:**
+With Standard SKU, you can now deploy successfully in **any Azure region** including East US, as Standard SKU has much higher quota limits everywhere, unlike Basic SKU which has been phased out in many primary regions.
+
 ---
 
 ## 🔗 Resources

@@ -108,7 +108,8 @@ function Deploy-HPCPackCluster {
 
 # Main Execution
 $TemplateFileAD = "new-1hn-wincn-ad.json"
-$resourceGroup = "hpc-pack"
+$timestamp = Get-Date -Format "MMddHHmm"
+$resourceGroup = "hpc-pack-jacomini-$timestamp"
 $location = "East US"
 $clusterName = "headnode"
 $domainName = "hpc.cluster"
