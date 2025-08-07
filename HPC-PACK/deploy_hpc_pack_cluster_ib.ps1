@@ -11,14 +11,36 @@ param(
 
 
 function Select-AzSubscriptionContext {
-    $selectedSub = Get-AzSubscription | Out-GridView -Title "Select a subscription" -PassThru
-    if (-not $selectedSub) {
-        Write-Host "`n❌ No subscription selected. Exiting script."
-        Write-Host "Try running: Connect-AzAccount "
+    # Try to get current context first
+    $currentContext = Get-AzContext
+    if ($currentContext -and $currentContext.Subscription) {
+        Write-Output "🔍 Using current Azure context:"
+        Write-Output "   Subscription: $($currentContext.Subscription.Name) ($($currentContext.Subscription.Id))"
+        Write-Output "   Account: $($currentContext.Account.Id)"
+        
+        $confirmation = Read-Host "Continue with this subscription? (Y/N)"
+        if ($confirmation -eq "Y" -or $confirmation -eq "y") {
+            return $currentContext.Subscription
+        }
+    }
+    
+    # Fallback: Try Get-AzSubscription with error handling
+    try {
+        $selectedSub = Get-AzSubscription | Out-GridView -Title "Select a subscription" -PassThru
+        if (-not $selectedSub) {
+            Write-Output "`n❌ No subscription selected. Exiting script."
+            Write-Output "Try running: Connect-AzAccount "
+            exit 1
+        }
+        Set-AzContext -SubscriptionId $selectedSub.Id -TenantId $selectedSub.TenantId
+        return $selectedSub
+    }
+    catch {
+        Write-Output "❌ Error accessing subscriptions: $($_.Exception.Message)"
+        Write-Output "Try running: Connect-AzAccount"
+        Write-Output "Or: Update-Module Az -Force"
         exit 1
     }
-    Set-AzContext -SubscriptionId $selectedSub.Id -TenantId $selectedSub.TenantId
-    return $selectedSub
 }
 
 function Get-AuthenticationKey {

@@ -1,39 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Deploys an Azure function Select-AzSubscriptionContext {
-    # Try to get current context first
-    $currentContext = Get-AzContext
-    if ($currentContext -and $currentContext.Subscription) {
-        Write-Host "🔍 Using current Azure context:"
-        Write-Host "   Subscription: $($currentContext.Subscription.Name) ($($currentContext.Subscription.Id))"
-        Write-Host "   Account: $($currentContext.Account.Id)"
-        
-        $confirmation = Read-Host "Continue with this subscription? (Y/N)"
-        if ($confirmation -eq "Y" -or $confirmation -eq "y") {
-            return $currentContext.Subscription
-        }
-    }
-    
-    # Fallback: Try Get-AzSubscription with error handling
-    try {
-        $selectedSub = Get-AzSubscription | Out-GridView -Title "Select a subscription" -PassThru
-        if (-not $selectedSub) {
-            Write-Host "`n❌ No subscription selected. Exiting script."
-            Write-Host "Try running: Connect-AzAccount "
-            exit 1
-        }
-        Set-AzContext -SubscriptionId $selectedSub.Id -TenantId $selectedSub.TenantId
-        return $selectedSub
-    }
-    catch {
-        Write-Host "❌ Error accessing subscriptions: $($_.Exception.Message)"
-        Write-Host "Try running: Connect-AzAccount"
-        Write-Host "Or: Update-Module Az -Force"
-        exit 1
-    }
-}luster with a single head node for Windows workloads, including aut        # Validate template first
-        Write-Host "`n🔍 Validating ARM template..."
-        $validation = Test-AzResourceGroupDeployment -ResourceGroupName $ResourceGroup -TemplateFile $TemplateFile @Parameters -ErrorAction SilentlyContinueted creation of a new Active Directory Domain.
+    Deploys an HPC Pack cluster with a single head node for Windows workloads, including automated creation of a new Active Directory Domain.
 
 .DESCRIPTION
     This PowerShell script automates the end-to-end deployment of an HPC Pack cluster in Azure, optimized for Windows-based high-performance computing scenarios. Key features include:
@@ -64,14 +31,36 @@
 #>
 
 function Select-AzSubscriptionContext {
-    $selectedSub = Get-AzSubscription | Out-GridView -Title "Select a subscription" -PassThru
-    if (-not $selectedSub) {
-        Write-Host "`n❌ No subscription selected. Exiting script."
-        Write-Host "Try running: Connect-AzAccount "
+    # Try to get current context first
+    $currentContext = Get-AzContext
+    if ($currentContext -and $currentContext.Subscription) {
+        Write-Host "🔍 Using current Azure context:"
+        Write-Host "   Subscription: $($currentContext.Subscription.Name) ($($currentContext.Subscription.Id))"
+        Write-Host "   Account: $($currentContext.Account.Id)"
+        
+        $confirmation = Read-Host "Continue with this subscription? (Y/N)"
+        if ($confirmation -eq "Y" -or $confirmation -eq "y") {
+            return $currentContext.Subscription
+        }
+    }
+    
+    # Fallback: Try Get-AzSubscription with error handling
+    try {
+        $selectedSub = Get-AzSubscription | Out-GridView -Title "Select a subscription" -PassThru
+        if (-not $selectedSub) {
+            Write-Host "`n❌ No subscription selected. Exiting script."
+            Write-Host "Try running: Connect-AzAccount "
+            exit 1
+        }
+        Set-AzContext -SubscriptionId $selectedSub.Id -TenantId $selectedSub.TenantId
+        return $selectedSub
+    }
+    catch {
+        Write-Host "❌ Error accessing subscriptions: $($_.Exception.Message)"
+        Write-Host "Try running: Connect-AzAccount"
+        Write-Host "Or: Update-Module Az -Force"
         exit 1
     }
-    Set-AzContext -SubscriptionId $selectedSub.Id -TenantId $selectedSub.TenantId
-    return $selectedSub
 }
 
 function Ensure-ResourceGroup {
@@ -182,7 +171,7 @@ function Deploy-HPCPackCluster {
 $TemplateFileAD = "new-1hn-wincn-ad.json"
 $timestamp = Get-Date -Format "MMddHHmm"
 $resourceGroup = "hpcpack-wn-jacomini-$timestamp"
-$location = "East US 2"
+$location = "East US 2"  # Updated to use working region based on deployment analysis
 $clusterName = "headnode"
 $domainName = "hpc.cluster"
 $adminUsername = "hpcadmin"
