@@ -4,10 +4,13 @@
 The `deploy_h_series_ib_win2019_enhanced.ps1` script creates Azure H series VMs with InfiniBand/RDMA support on Windows Server 2019 without HPC Pack dependencies. The enhanced version includes cost optimization features, quota checking, and pricing comparisons.
 
 **Available Scripts:**
-- `deploy_h_series_ib_win2019_enhanced.ps1` - Enhanced version with HCS Family support, quota checking, and cost optimization
-- `deploy_h_series_ib_win2019.ps1` - Original version (basic H Family VMs only)
+- `deploy_h_series_ib_win2019_enhanced.ps1` - Enhanced H-series VM deployment with HCS Family support, quota checking, and cost optimization
+- `install-infiniband-rdma.ps1` - **Enhanced RDMA installation script with pre-installation verification** - automatically skips installation if RDMA is already working
 
-**✅ Recommended**: Use the enhanced version for better quota support and cost optimization.
+**✅ Enhanced Features:**
+- **Smart Verification**: Automatically checks if RDMA is already configured before installation
+- **Cost Optimization**: HCS Family support with 1320 vCPU quota availability
+- **Zero Downtime**: Skips unnecessary installation on already-configured systems
 
 ## Prerequisites
 1. Azure PowerShell module installed: `Install-Module -Name Az`
@@ -250,7 +253,7 @@ Based on successful deployment on August 6, 2025:
 
 ### **1. Change to HPC & AI Support Team Shared Subscription:**
 ```powershell
-az account set --subscription "4ff8254c-98ae-4bda-b37f-b30d4b289a5b"
+az account set --subscription "xxf8254c-blabla-4bda-b37f-b30d4b289ayy"
 az account show --output table  # Verify subscription
 ```
 
@@ -271,14 +274,39 @@ az resource list --resource-group "HSeries-IB-jacomini-westus2" --output table
 
 ### **4. Test InfiniBand (Remote Commands):**
 ```powershell
-# Check network adapters
-az vm run-command invoke --resource-group "HSeries-IB-jacomini-westus2" --name "HSeries-IB1" --command-id "RunPowerShellScript" --scripts "Get-NetAdapter | Format-Table Name, InterfaceDescription, LinkSpeed -AutoSize"
+# Define variables
+$resourceGroup = "HSeries-IB-jacomini-westus2"
+$vmName = "HSeries-IB1"
 
-# Check RDMA status  
-az vm run-command invoke --resource-group "HSeries-IB-jacomini-westus2" --name "HSeries-IB1" --command-id "RunPowerShellScript" --scripts "Get-NetAdapterRdma | Format-Table Name, Enabled, MaxQueuePairs -AutoSize"
+# Check network adapters
+az vm run-command invoke `
+  --resource-group $resourceGroup `
+  --name $vmName `
+  --command-id "RunPowerShellScript" `
+  --scripts "Get-NetAdapter | Format-Table Name, InterfaceDescription, LinkSpeed -AutoSize"
+
+# Check RDMA status
+az vm run-command invoke `
+  --resource-group $resourceGroup `
+  --name $vmName `
+  --command-id "RunPowerShellScript" `
+  --scripts "Get-NetAdapterRdma | Format-Table Name, Enabled, MaxQueuePairs -AutoSize"
+
+# RDMA verification
+az vm run-command invoke `
+  --resource-group $resourceGroup `
+  --name $vmName `
+  --command-id "RunPowerShellScript" `
+  --scripts "Get-NetAdapterRdma | Format-Table Name, Enabled, MaxQueuePairs -AutoSize; Write-Output '---'; Get-NetAdapter | Where-Object { `$_.InterfaceDescription -like '*Mellanox*' } | Format-Table Name, InterfaceDescription, LinkSpeed, Status -AutoSize; Write-Output '---'; Get-SmbClientNetworkInterface | Where-Object { `$_.RdmaCapable -eq `$true } | Format-Table InterfaceIndex, RdmaCapable, RssCapable -AutoSize" `
+  --output table
 
 # Check SMB interfaces
-az vm run-command invoke --resource-group "HSeries-IB-jacomini-westus2" --name "HSeries-IB1" --command-id "RunPowerShellScript" --scripts "Get-SmbClientNetworkInterface | Format-Table InterfaceIndex, InterfaceAlias, RdmaCapable, LinkSpeed -AutoSize"
+az vm run-command invoke `
+  --resource-group $resourceGroup `
+  --name $vmName `
+  --command-id "RunPowerShellScript" `
+  --scripts "Get-SmbClientNetworkInterface | Format-Table InterfaceIndex, InterfaceAlias, RdmaCapable, LinkSpeed -AutoSize"
+
 ```
 
 ### **5. Connect via RDP:**
@@ -287,6 +315,23 @@ az vm run-command invoke --resource-group "HSeries-IB-jacomini-westus2" --name "
 mstsc /v:4.155.210.177
 # Username: azureuser
 # Password: [your deployment password]
+```
+
+### **6. Standalone RDMA Installation with Smart Verification:**
+```powershell
+# The enhanced script automatically checks if RDMA is already working
+# If RDMA is properly configured, installation is skipped automatically
+
+# Remote execution with automatic verification
+.\install-infiniband-rdma.ps1 -RemoteExecution -ResourceGroup "HSeries-IB-jacomini-westus2" -VmName "HSeries-IB1"
+
+# Local execution with verification
+.\install-infiniband-rdma.ps1
+
+# The script will output:
+# ✅ RDMA is already properly configured and working!
+# ℹ️  Installation step will be skipped.
+# ✅ System verification completed - RDMA is ready for use!
 ```
 
 3. **Request Quota Increase** (For other H Family VMs):

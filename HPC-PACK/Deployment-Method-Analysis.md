@@ -110,11 +110,46 @@ Consider adding region validation to ARM template:
 ]
 ```
 
+## Latest Testing Results - DSC Version Lock
+
+### Combined Fix Testing (eastus2 + autoUpgradeMinorVersion: false)
+**Date**: August 6, 2025  
+**Resource Group**: hpcpack-wn-jacomini-08062139
+
+#### Extension Status:
+```
+Name             ExtensionType         ProvisioningState TypeHandlerVersion
+----             -------------         ----------------- ------------------
+JoinADDomain     JsonADDomainExtension Succeeded         1.3
+setupHpcHeadNode DSC                   Failed            2.80
+```
+
+#### Critical Discovery:
+The error `-532462766` **still occurs** even with:
+- ✅ Region: `eastus2` (working region)
+- ✅ DSC Version: Locked to `2.80` 
+- ✅ Duration: ~23 minutes execution (vs immediate failure)
+
+#### Full Error Message:
+```json
+{
+  "code": "VMExtensionProvisioningError",
+  "message": "VM has reported a failure when processing extension 'setupHpcHeadNode' (publisher 'Microsoft.Powershell' and type 'DSC'). Error message: 'DSC Configuration 'InstallPrimaryHeadNode' completed with error(s). Following are the first few: PowerShell DSC resource MSFT_xHpcHeadNodeInstall failed to execute Set-TargetResource functionality with error message: Failed to Install HPC Pack Head Node (errCode=-532462766) The SendConfigurationApply function did not succeed.'. More information on troubleshooting is available at https://aka.ms/VMExtensionDSCWindowsTroubleshoot."
+}
+```
+
+### Analysis Update:
+The regional + DSC version fixes **improved stability** (longer execution time) but the core HPC Pack installation error persists. This suggests:
+
+1. **Infrastructure Progress**: ✅ DSC extension environment is now stable
+2. **HPC Pack Issue**: ❌ The actual HPC Pack installation process has an internal error
+3. **Error Location**: The failure occurs in `MSFT_xHpcHeadNodeInstall` DSC resource during `Set-TargetResource`
+
 ## Deployment Matrix Results
 
 | Region | Manual Portal | PowerShell Script | Status |
 |--------|---------------|-------------------|---------|
-| eastus2 | ✅ SUCCESS | 🔬 **NEEDS TESTING** | Validate script in working region |
+| eastus2 | ✅ SUCCESS | ⚠️ **IMPROVED BUT FAILING** | DSC stable, HPC install fails |
 | eastus | 🔬 **NEEDS TESTING** | ❌ FAILED | Known problematic region |
 
 ## Next Steps

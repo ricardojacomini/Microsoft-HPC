@@ -1809,7 +1809,7 @@
                         "publisher": "Microsoft.Powershell",
                         "type": "DSC",
                         "typeHandlerVersion": "2.80",
-                        "autoUpgradeMinorVersion": true,
+                        "autoUpgradeMinorVersion": false,
                         "settings": {
                           "configuration": {
                             "url": "[format('{0}/CreateADPDC.ps1.zip', variables('sharedResxBaseUrl'))]",
