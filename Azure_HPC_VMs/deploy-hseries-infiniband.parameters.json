@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourcePrefix": {
+      "value": "win-accel"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "vmSize": {
+      "value": "Standard_D4s_v3"
+    },
+    "windowsOSVersion": {
+      "value": "2022-datacenter-azure-edition"
+    },
+    "adminUsername": {
+      "value": "azureuser"
+    },
+    "adminPassword": {
+      "value": "ChangeMe123!"
+    },
+    "vmCount": {
+      "value": 1
+    },
+    "enablePremiumStorage": {
+      "value": true
+    },
+    "osDiskSizeGB": {
+      "value": 128
+    }
+  }
+}

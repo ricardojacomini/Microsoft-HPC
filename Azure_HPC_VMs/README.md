@@ -6,11 +6,14 @@ The `deploy_h_series_ib_win2019_enhanced.ps1` script creates Azure H series VMs 
 **Available Scripts:**
 - `deploy_h_series_ib_win2019_enhanced.ps1` - Enhanced H-series VM deployment with HCS Family support, quota checking, and cost optimization
 - `install-infiniband-rdma.ps1` - **Enhanced RDMA installation script with pre-installation verification** - automatically skips installation if RDMA is already working
+- `deploy-windows-accelerated-networking.bicep` - **NEW: Regular Windows VMs with Accelerated Networking** (cost-effective alternative to HC series)
+- `deploy-windows-accelerated-networking.ps1` - **NEW: PowerShell deployment script for Accelerated Networking VMs**
 
 **✅ Enhanced Features:**
 - **Smart Verification**: Automatically checks if RDMA is already configured before installation
 - **Cost Optimization**: HCS Family support with 1320 vCPU quota availability
 - **Zero Downtime**: Skips unnecessary installation on already-configured systems
+- **Accelerated Networking Alternative**: Up to 30 Gbps performance with regular VMs at standard pricing
 
 ## Prerequisites
 1. Azure PowerShell module installed: `Install-Module -Name Az`
@@ -18,6 +21,12 @@ The `deploy_h_series_ib_win2019_enhanced.ps1` script creates Azure H series VMs 
 3. Connected to Azure: `Connect-AzAccount`
 
 ## Basic Usage
+
+### Option 1: H-Series VMs with InfiniBand (Premium HPC Performance)
+
+**Use Case**: Maximum network performance (100+ Gbps), HPC workloads requiring InfiniBand, MPI applications
+**Cost**: Premium pricing ($0.80-$12.00/hour)
+**Performance**: Up to 200 Gbps InfiniBand with RDMA
 
 ### 1. Show pricing comparison (information only)
 ```powershell
@@ -79,7 +88,48 @@ The `deploy_h_series_ib_win2019_enhanced.ps1` script creates Azure H series VMs 
 .\deploy_h_series_ib_win2019_enhanced.ps1 -VmSize "Standard_HB60rs" -VmCount 3
 ```
 
+### Option 2: Regular Windows VMs with Accelerated Networking (Cost-Effective Alternative)
+
+**Use Case**: High network performance applications, web servers, databases, general compute workloads
+**Cost**: Standard VM pricing (significantly lower than H-series)
+**Performance**: Up to 30 Gbps with Accelerated Networking (sufficient for most workloads)
+
+### 1. Interactive deployment with Accelerated Networking
+```powershell
+.\deploy-windows-accelerated-networking.ps1
+```
+
+### 2. Specific VM size with high performance
+```powershell
+.\deploy-windows-accelerated-networking.ps1 -VmSize "Standard_D8s_v3" -VmCount 3
+```
+
+### 3. Test deployment (validation only)
+```powershell
+.\deploy-windows-accelerated-networking.ps1 -WhatIf
+```
+
+### 4. Custom configuration with Windows Server 2019
+```powershell
+.\deploy-windows-accelerated-networking.ps1 -ResourceGroupName "MyApp-RG" -WindowsVersion "2019-datacenter" -VmCount 2
+```
+
+### 5. High-performance compute workload
+```powershell
+.\deploy-windows-accelerated-networking.ps1 -VmSize "Standard_F16s_v2" -EnablePremiumStorage $true -OsDiskSizeGB 256
+```
+
+### 6. Direct Bicep deployment
+```bash
+az deployment group create \
+  --resource-group rg-win-accel \
+  --template-file deploy-windows-accelerated-networking.bicep \
+  --parameters @deploy-hseries-infiniband.parameters.json
+```
+
 ## Parameters
+
+### H-Series InfiniBand Deployment Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -92,6 +142,21 @@ The `deploy_h_series_ib_win2019_enhanced.ps1` script creates Azure H series VMs 
 | `-WhatIf` | `false` | Preview deployment without creating resources (dry run) |
 | `-CheckQuota` | `false` | Check Azure quota availability before deployment (information-only when used alone) |
 | `-ShowPricing` | `false` | Display pricing comparison for all available VM sizes (information-only when used alone) |
+
+### Accelerated Networking Deployment Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `-ResourceGroupName` | `""` | Name of the resource group to create/use (interactive if not specified) |
+| `-Location` | `eastus` | Azure region for deployment |
+| `-ResourcePrefix` | `win-accel` | Prefix for all resource names |
+| `-VmSize` | `Standard_D4s_v3` | VM size (must support Accelerated Networking) |
+| `-WindowsVersion` | `2022-datacenter-azure-edition` | Windows Server version |
+| `-VmCount` | `1` | Number of VMs to deploy |
+| `-AdminUsername` | `azureuser` | Administrator username for all VMs |
+| `-EnablePremiumStorage` | `true` | Use Premium SSD storage |
+| `-OsDiskSizeGB` | `128` | OS disk size in GB |
+| `-WhatIf` | `false` | Preview deployment without creating resources |
 
 ## Supported H Series VM Sizes
 
@@ -110,6 +175,49 @@ The enhanced script supports the following H series VM sizes with InfiniBand and
 - `Standard_HB176rs_v4` (176 cores, 768 GB RAM, ~$12.00/hour) - **Latest generation**
 
 Use `-ShowPricing` parameter to see detailed cost comparison and choose the right VM size for your workload.
+
+## Deployment Options Comparison
+
+| Feature | H-Series with InfiniBand | Regular VMs with Accelerated Networking |
+|---------|-------------------------|----------------------------------------|
+| **Max Network Performance** | 200 Gbps InfiniBand + RDMA | 30 Gbps Ethernet |
+| **Cost** | Premium ($0.80-$12/hour) | Standard VM pricing (much lower) |
+| **Use Cases** | HPC, MPI, Scientific Computing | Web apps, databases, general compute |
+| **Availability** | Limited regions, quota restrictions | Most regions, standard quotas |
+| **Setup Complexity** | Complex (InfiniBand drivers) | Simple (built-in Azure feature) |
+| **VM Size Options** | H/HC/HB series only | D, E, F series (wide selection) |
+| **Recommended For** | Maximum performance requirements | Cost-conscious high-performance needs |
+
+## Accelerated Networking Supported VM Sizes
+
+The `deploy-windows-accelerated-networking.bicep` template supports these VM sizes with expected performance:
+
+### **General Purpose (D-Series)**
+| VM Size | vCPUs | RAM | Expected Bandwidth | Max PPS | Approx. Cost/Hour |
+|---------|--------|-----|-------------------|---------|-------------------|
+| `Standard_D2s_v3` | 2 | 8 GB | 1 Gbps | 125K | ~$0.10 |
+| `Standard_D4s_v3` | 4 | 16 GB | 2 Gbps | 250K | ~$0.20 |
+| `Standard_D8s_v3` | 8 | 32 GB | 4 Gbps | 500K | ~$0.40 |
+| `Standard_D16s_v3` | 16 | 64 GB | 8 Gbps | 1M | ~$0.80 |
+| `Standard_D32s_v3` | 32 | 128 GB | 16 Gbps | 2M | ~$1.60 |
+
+### **Compute Optimized (F-Series)**
+| VM Size | vCPUs | RAM | Expected Bandwidth | Max PPS | Approx. Cost/Hour |
+|---------|--------|-----|-------------------|---------|-------------------|
+| `Standard_F4s_v2` | 4 | 8 GB | 2 Gbps | 250K | ~$0.18 |
+| `Standard_F8s_v2` | 8 | 16 GB | 4 Gbps | 500K | ~$0.36 |
+| `Standard_F16s_v2` | 16 | 32 GB | 8 Gbps | 1M | ~$0.72 |
+| `Standard_F32s_v2` | 32 | 64 GB | 16 Gbps | 2M | ~$1.44 |
+
+### **Memory Optimized (E-Series)**
+| VM Size | vCPUs | RAM | Expected Bandwidth | Max PPS | Approx. Cost/Hour |
+|---------|--------|-----|-------------------|---------|-------------------|
+| `Standard_E4s_v3` | 4 | 32 GB | 2 Gbps | 250K | ~$0.25 |
+| `Standard_E8s_v3` | 8 | 64 GB | 4 Gbps | 500K | ~$0.50 |
+| `Standard_E16s_v3` | 16 | 128 GB | 8 Gbps | 1M | ~$1.00 |
+| `Standard_E32s_v3` | 32 | 256 GB | 16 Gbps | 2M | ~$2.00 |
+
+**💡 Cost Comparison**: A `Standard_D8s_v3` with 4 Gbps Accelerated Networking costs ~$0.40/hour vs. HC-series at $0.80-$12.00/hour - **significant savings for most workloads!**
 
 ## Information-Only Mode
 
@@ -151,6 +259,8 @@ To actually deploy VMs, combine with other parameters or run without information
 
 ## Post-Deployment Verification
 
+### For H-Series VMs with InfiniBand:
+
 After deployment, connect to the VMs and run these commands to verify InfiniBand:
 
 ```powershell
@@ -165,6 +275,34 @@ Get-NetAdapter | Where-Object { $_.Name -like '*Ethernet*' }
 
 # Detailed adapter information (usually "Ethernet 2" for InfiniBand)
 Get-NetAdapter | Where-Object { $_.Name -eq "Ethernet 2" } | Format-List *
+```
+
+### For Regular VMs with Accelerated Networking:
+
+After deployment, connect to the VMs and run these commands to verify Accelerated Networking:
+
+```powershell
+# Check network adapters and their capabilities
+Get-NetAdapter | Select-Object Name, InterfaceDescription, LinkSpeed, Status
+
+# Verify offload features (should show various offloads enabled)
+Get-NetAdapterAdvancedProperty | Where-Object {$_.DisplayName -like '*Offload*'}
+
+# Check for SR-IOV support (indicates Accelerated Networking)
+Get-NetAdapterSriov
+
+# Test network connectivity with detailed information
+Test-NetConnection -ComputerName 8.8.8.8 -InformationLevel Detailed
+
+# Check specific offload settings
+Get-NetAdapterAdvancedProperty | Where-Object {
+    $_.DisplayName -like '*Checksum*' -or 
+    $_.DisplayName -like '*Scaling*' -or 
+    $_.DisplayName -like '*Offload*'
+} | Select-Object DisplayName, DisplayValue
+
+# Network performance monitoring
+Get-Counter "\Network Interface(*)\Bytes Total/sec" -SampleInterval 1 -MaxSamples 5
 ```
 
 ## **🎯 Verified InfiniBand Results (August 6, 2025)**
@@ -192,6 +330,40 @@ Get-NetAdapter | Where-Object { $_.Name -eq "Ethernet 2" } | Format-List *
 | 7 | False | 50 Gbps |
 
 **✅ Result**: **Two functional InfiniBand adapters** with RDMA enabled, ready for HPC workloads!
+
+## 🤔 Which Deployment Option Should You Choose?
+
+### Choose **H-Series with InfiniBand** when you need:
+- ✅ **Maximum network performance** (100-200 Gbps)
+- ✅ **RDMA capabilities** for ultra-low latency
+- ✅ **MPI applications** that require InfiniBand
+- ✅ **Scientific computing** workloads
+- ✅ **Computational fluid dynamics, weather modeling**
+- ✅ **Budget allows premium pricing** ($0.80-$12.00/hour)
+
+### Choose **Regular VMs with Accelerated Networking** when you need:
+- ✅ **High network performance** but not maximum (up to 30 Gbps)
+- ✅ **Cost-effective solution** (significantly lower pricing)
+- ✅ **Standard applications** (web servers, databases, APIs)
+- ✅ **Development and testing** environments
+- ✅ **General compute workloads** with network optimization
+- ✅ **Quick deployment** without complex driver management
+- ✅ **Wide VM size selection** (D, E, F series)
+
+### Quick Decision Matrix:
+
+| Your Requirement | Recommended Option |
+|------------------|-------------------|
+| **"I need the absolute fastest network performance"** | H-Series InfiniBand |
+| **"I want good network performance at reasonable cost"** | Accelerated Networking |
+| **"I'm running MPI/HPC applications"** | H-Series InfiniBand |
+| **"I'm hosting web applications or databases"** | Accelerated Networking |
+| **"Budget is a primary concern"** | Accelerated Networking |
+| **"I need this for development/testing"** | Accelerated Networking |
+| **"I require RDMA capabilities"** | H-Series InfiniBand |
+| **"I want simple, reliable deployment"** | Accelerated Networking |
+
+**💡 Pro Tip**: Start with **Accelerated Networking** for most workloads. It provides excellent performance at a fraction of the cost. Only move to H-Series if you specifically need InfiniBand/RDMA capabilities or maximum network throughput.
 
 ## Troubleshooting
 
@@ -369,6 +541,8 @@ mstsc /v:4.155.210.177
 
 ### Common Issues:
 
+#### H-Series InfiniBand Issues:
+
 1. **Driver installation fails:**
    - Check Windows updates are current
    - Verify VM size supports InfiniBand
@@ -383,6 +557,29 @@ mstsc /v:4.155.210.177
    - Verify network security group rules
    - Check if Windows Firewall is blocking traffic
    - Ensure VMs are in the same subnet
+
+#### Accelerated Networking Issues:
+
+1. **Accelerated Networking not enabled:**
+   - **Problem**: VM size doesn't support Accelerated Networking
+   - **Solution**: Choose supported VM size (D2s_v3 or larger, F2s_v2 or larger)
+   - **Verification**: Run `Get-NetAdapterSriov` - should show SR-IOV capabilities
+
+2. **Lower than expected performance:**
+   - **Check**: VM size limits - smaller VMs have lower network caps
+   - **Verify**: No bandwidth throttling: `Get-NetAdapterAdvancedProperty | Where-Object {$_.DisplayName -like '*Throttl*'}`
+   - **Optimize**: Enable RSS: `Set-NetAdapterAdvancedProperty -DisplayName 'Receive Side Scaling' -DisplayValue 'Enabled'`
+
+3. **Deployment fails with "VM size not available":**
+   - **Try different region**: Some regions have better VM availability
+   - **Check quotas**: Standard VM quotas are usually sufficient
+   - **Alternative sizes**: Switch between D, E, F series as needed
+
+4. **Network performance not meeting expectations:**
+   - **Check VM size**: Ensure you're using appropriate size for expected performance
+   - **Verify offloads**: Use verification commands to ensure offloads are enabled
+   - **Network testing**: Use tools like `iperf3` or `ntttcp` for actual throughput testing
+   - **Monitor**: Use Azure Monitor Network Insights for performance analysis
 
 ### Manual Driver Installation:
 If automatic installation fails, you can manually install drivers:
