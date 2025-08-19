@@ -1,11 +1,14 @@
 https://learn.microsoft.com/en-us/powershell/high-performance-computing/system-requirements-for-hpc-pack?view=hpc19-ps
 https://learn.microsoft.com/en-us/powershell/high-performance-computing/step-5-add-linux-nodes-to-the-cluster?view=hpc19-ps
+https://learn.microsoft.com/en-us/powershell/high-performance-computing/manage-hpc-pack-linux-authentication-key?view=hpc19-ps
+https://learn.microsoft.com/en-us/powershell/high-performance-computing/hpcpack-burst-to-azure-iaas-nodes?view=hpc19-ps
+
 
 https://scorm.platform.qa.com/courses/1854/a6350796-6a76-472f-ab55-5438a3253917/1/story_content/external_files/Module_5_LabGuide_AddingLinuxComputeNodes.pdf
 
 timedatectl set-timezone America/New_York
 
-mount -t cifs //jacomini-vm-hpc/smbshare /smbshare/ -o vers=2.1,domain=teja,username=hpcadmin,password='T@is2304998',dir_mode=0777,file_mode=0777 
+mount -t cifs //headnode/share /smbshare/ -o vers=2.1,domain=teja,username=hpcadmin,password='T@is2304998',dir_mode=0777,file_mode=0777 
 mount -t cifs //jacomini-vm-hpc/smbshare /smbshare/ -o vers=2.1,domain=teja,username=hpcadmin,dir_mode=0777,file_mode=0777 
 
 mount -t cifs //headnode/smbshare /smbshare/ -o vers=2.1,domain=hpc.cluster,username=hpcadmin,dir_mode=0777,file_mode=0777 
@@ -18,16 +21,32 @@ python3 /var/lib/waagent/Microsoft.HpcPack.LinuxNodeAgent2016U1-16.3.8329.0/./hp
 
 # run it on headnode
 get-hpcclusterregistry -propertyname clusterauthenticationkey
-python3 setup.py -install -connectionstring:'headnode' -certfile:'HpcCnCommunication.pfx' -authenticationkey:'3aef5dc3-67a4-4779-aee1-2213b699c933'
+python3 setup.py -install -connectionstring:'headnode' -certfile:'HPCPackCommunication.pfx' -certpasswd:'YourStrongPassword123!' -authenticationkey:'f0d669d0-3753-4058-baec-a45e2c12a691'
+
+python3 setup.py -install -connectionstring:'headnode' -certfile:'HpcHnPublicCert.crt' -authenticationkey:'f0d669d0-3753-4058-baec-a45e2c12a691'
+
+
+
+
+/usr/local/share/ca-certificates/HpcHnPublicCert.crt
 
 python3 setup.py -install -connectionstring:'jacomini-vm-hn' -certfile:'HpcCnCommunication.pfx' -managehosts
 
 /var/log/azure/Microsoft.HpcPack.LinuxNodeAgent2016U1/extension.log
 
-openssl x509 -in /usr/local/share/ca-certificates/HpcHnPublicCert.crt -noout -text -fingerprint -sha1
+openssl x509 -in /usr/local/share/ca-certificates/HpcHnPublicCert.crt -noout -serial -fingerprint -sha1
+
+
+🔍 Where to Look for Installation Logs
+The installation logs for HPC Pack are typically located in:
+
+C:\Windows\Temp\HPCSetupLogs\
+
+tail -f /var/log/azure/Microsoft.HpcPack.LinuxNodeAgent2016U1/extension.log
+openssl x509 -in/opt/hpcnodemanager/certs/nodemanager.crt -noout -text -fingerprint -sha1
 curl -vk https://HEADNODE:443/HpcNaming/api/fabric/resolve/singleton/MonitoringStatefulService --cert /opt/hpcnodemanager/certs/nodemanager.crt --key /opt/hpcnodemanager/certs/nodemanager.key
 
-python3 setup.py -install -connectionstring:'headnode' -certfile:'HpcCnCommunication.pfx' -managehosts
+python3 setup.py -install -connectionstring:'headnode' -certfile:'../HpcCnCommunication.pfx' -managehosts
 python3 setup.py -uninstall
 
 #Compare serial and thumbprint
@@ -37,7 +56,6 @@ openssl x509 -in HpcCnCommunication.pfx -noout -text -fingerprint -sha1
 
 
 python3 /var/lib/waagent/Microsoft.HpcPack.LinuxNodeAgent2016U1-16.3.8329.0/./hpcnodemanager.py daemon
-
 
 
 openssl x509 -in /opt/hpcnodemanager/certs/nodemanager.crt -noout -fingerprint -sha1
@@ -62,7 +80,7 @@ openssl pkcs12 -in HpcCnCommunication.pfx -nodes
 openssl s_client -connect 10.0.0.4:443 -tls1_2
 openssl s_client -connect 10.0.0.4:443 -showcerts
 
- openssl x509 -in r  -noout -fingerprint -sha1
+openssl x509 -in HpcCnCommunication.pfx   -noout -fingerprint -sha1
 
 cat nodemanager.json | jq
 
@@ -128,3 +146,29 @@ The installation date source in Windows Programs and Features can be found in th
 - HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
 
 The InstallDate registry value is used to track the installation date of applications. If this value is missing or modified, it can cause the installation date to display incorrectly in Programs and Features .
+
+
+
+
+ENTRA ID
+
+az vm show \
+  --name W11 \
+  --resource-group hpcpack-wn-jacomini-portal \
+  --query identity.principalId \
+  --output tsv
+
+az role assignment create \
+  --assignee 2e2a6045-6e88-467e-9a03-73aeb2721f92 \
+  --role "Virtual Machine Administrator Login" \
+  --scope "/subscriptions/7bfe6334-68ac-4597-9cd4-59c9ab82e3e0/resourceGroups/hpcpack-wn-jacomini-portal/providers/Microsoft.Compute/virtualMachines/W11"
+
+Set-AzVMExtension -ResourceGroupName "hpcpack-wn-jacomini-portal" `
+  -VMName "W11" -Name "AADLoginForWindows" `
+  -Publisher "Microsoft.Azure.ActiveDirectory" `
+  -ExtensionType "AADLoginForWindows" `
+  -TypeHandlerVersion "1.0" `
+  -Location "eastus"
+
+
+

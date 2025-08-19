@@ -175,3 +175,62 @@ With Standard SKU, you can now deploy successfully in **any Azure region** inclu
 
 - **HPC Pack Templates Repository**  
   https://github.com/Azure/hpcpack-template/tree/master
+
+---
+
+## 🩺 Diagnostics & Troubleshooting Tool (HPC-pack-Insight-v5.ps1)
+
+Use the diagnostics script in `Scripts/HPC-pack-Insight-v5.ps1` to quickly inspect cluster health, services, ports, certificates, metrics, and history.
+
+### Highlights
+- Port reachability testing (single port or ranges)
+- Certificate discovery and validation for HPC Pack communication
+- Built-in DiagnosticTests (wraps HpcDiagnosticHost cert test)
+- Cluster/job/node history helpers
+- Metric value history export to CSV
+
+### Prerequisites
+- Windows PowerShell 5.1 (run console as Administrator)
+- On the head node for best results; Microsoft.Hpc module enables richer outputs when available
+
+### Quick start
+```powershell
+# Show help
+.\Scripts\HPC-pack-Insight-v5.ps1 -h
+
+# Test a single TCP port to a node
+.\Scripts\HPC-pack-Insight-v5.ps1 PortTest -NodeName IaaSCN104 -Port 40002
+
+# Test a range of ports
+.\Scripts\HPC-pack-Insight-v5.ps1 PortTest -NodeName IaaSCN104 -Ports @(40000..40003)
+
+# Run built-in diagnostic tests (includes certificate test)
+.\Scripts\HPC-pack-Insight-v5.ps1 DiagnosticTests
+
+# Export metric value history to CSV (date range optional)
+.\Scripts\HPC-pack-Insight-v5.ps1 MetricValueHistory -MetricStartDate (Get-Date).AddDays(-7) -MetricEndDate (Get-Date) -MetricOutputPath .\metrics.csv
+
+# Show node state history (last 7 days by default)
+.\Scripts\HPC-pack-Insight-v5.ps1 NodeHistory -NodeName IaaSCN104 -DaysBack 7
+
+# Recent jobs and optional node history
+.\Scripts\HPC-pack-Insight-v5.ps1 JobHistory -DaysBack 3
+```
+
+### Certificate details surfaced in DiagnosticTests
+When the HPC communication certificate is located (thumbprint from `HKLM:\SOFTWARE\Microsoft\HPC` or `Get-HpcInstallCertificate`), the output includes:
+
+- Thumbprint
+- SerialNumber
+- NotBefore
+- NotAfter
+- HasPrivateKey
+- Days Until Expiry and overall status
+
+If the certificate cannot be found locally, the tool reports the discovered thumbprint (if available) and a warning.
+
+### Tips
+- If WinRM TrustedHosts is empty and you’re troubleshooting node reachability, consider adding problematic node names on the head node:
+   - Overwrite: `Set-Item WSMan:\localhost\Client\TrustedHosts -Value "<NodeName>" -Force`
+   - Append: `Set-Item WSMan:\localhost\Client\TrustedHosts -Value "<NodeName>" -Concatenate -Force`
+
