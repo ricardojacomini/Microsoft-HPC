@@ -87,8 +87,8 @@
     Author         : Ricardo S Jacomini
     Team           : Azure HPC + AI  
     Email          : ricardo.jacomini@microsoft.com
-    Version        : 1.6.0
-    Last Modified  : 2025-08-15
+    Version        : 0.6.0
+    Last Modified  : 2025-08-20
     Script Name    : HPC-pack-Insight.ps1
     Tags           : Diagnostics, HPCPack
 #>
@@ -373,7 +373,19 @@ function Invoke-NetworkFix {
             $upAdapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' }
             if ($upAdapters) {
                 foreach ($ad in $upAdapters) {
-                    $cfg = Get-NetIPConfiguration -InterfaceIndex $ad.ifIndex -ErrorAction SilentlyContinue
+                    # Validate the interface index still exists to avoid NetTCPIP module throwing (race conditions, virtual adapters)
+                    $ifPresent = Get-NetIPInterface -InterfaceIndex $ad.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
+                    if (-not $ifPresent) {
+                        if ($VerbosePreference -eq 'Continue') { Write-Host ("  Skipping adapter idx {0} (no MSFT_NetIPInterface)" -f $ad.ifIndex) -ForegroundColor DarkGray }
+                        continue
+                    }
+                    # Suppress transient module errors; fall back to a broad query if needed
+                    $cfg = $null
+                    try {
+                        $cfg = Get-NetIPConfiguration -InterfaceIndex $ad.ifIndex -ErrorAction Stop 2>$null
+                    } catch {
+                        $cfg = Get-NetIPConfiguration -ErrorAction SilentlyContinue 2>$null | Where-Object { ($_.InterfaceIndex -eq $ad.ifIndex) -or ($_.InterfaceAlias -eq $ad.InterfaceAlias) } | Select-Object -First 1
+                    }
                     if ($cfg) {
                         $ipv4s = @()
                         if ($cfg.IPv4Address) {
@@ -2196,6 +2208,10 @@ function Show-DeepHelp {
     Write-Host "    Checks: default route reachability, DNS resolution (microsoft.com, azure.com)." -ForegroundColor White
     Write-Host "    Repairs (when -FixNetworkIssues): netsh winsock reset; ipconfig /flushdns;" -ForegroundColor White
     Write-Host "    opens inbound firewall TCP ports: 80, 443, 9087, 9090, 9091, 9094." -ForegroundColor White
+    Write-Host "  PortTest:" -ForegroundColor Yellow
+    Write-Host "    Tests TCP connectivity to a node. -Port <int> for single port, -Ports <int[]> for list/range." -ForegroundColor White
+    Write-Host "    Defaults: target is -NodeName if provided else -SchedulerNode;" -ForegroundColor White
+    Write-Host "    ports default to 80, 443, 9087, 9090, 9091, 9094 when none are specified." -ForegroundColor White
     Write-Host "  CommandTest:" -ForegroundColor Yellow
     Write-Host "    Uses Get-HpcClusterOverview to validate connectivity and list version/node count." -ForegroundColor White
     Write-Host "  NodeValidation:" -ForegroundColor Yellow
@@ -2217,6 +2233,10 @@ function Show-DeepHelp {
     Write-Host "    If -NodeName isn't provided, uses the positional SchedulerNode as the target node." -ForegroundColor White
     Write-Host "  ClusterMetrics:" -ForegroundColor Yellow
     Write-Host "    Counts available metrics via Get-HpcMetric." -ForegroundColor White
+    Write-Host "  MetricValueHistory:" -ForegroundColor Yellow
+    Write-Host "    Exports metric value history (Get-HpcMetricValueHistory) to CSV." -ForegroundColor White
+    Write-Host "    Options: -MetricStartDate <DateTime>, -MetricEndDate <DateTime>, -MetricOutputPath <Path>." -ForegroundColor White
+    Write-Host "    Defaults: last 7 days if dates not specified; end defaults to now." -ForegroundColor White
     Write-Host "  ClusterTopology:" -ForegroundColor Yellow
     Write-Host "    Pings first 5 nodes' NetBIOS names from Get-HpcNode; shows reachability/state/health." -ForegroundColor White
     Write-Host "  ServicesStatus:" -ForegroundColor Yellow
@@ -2333,11 +2353,15 @@ function Invoke-InsightRunMode {
             Invoke-SystemInfo
             Invoke-ServicesStatus
             Invoke-NetworkFix
+            Invoke-PortTest
             Invoke-CommandTest
             Invoke-NodeValidation
             Invoke-ClusterMetadata
             Invoke-NodeTemplates
             Invoke-JobHistory
+            # Include NodeHistory as part of All. If -NodeName isn't provided, use SchedulerNode.
+            $targetNode = if ($NodeName) { $NodeName } else { $SchedulerNode }
+            Invoke-NodeHistory -NodeName $targetNode -DaysBack $DaysBack
             Invoke-ClusterMetrics
             $mvhArgs = @{}
             if ($PSBoundParameters.ContainsKey('MetricStartDate')) { $mvhArgs.StartDate = $MetricStartDate }
