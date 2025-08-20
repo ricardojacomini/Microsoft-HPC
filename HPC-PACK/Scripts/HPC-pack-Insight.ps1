@@ -6,7 +6,7 @@
     Self-contained HPC Pack diagnostics and troubleshooting tool.
 
     PowerShell ISE: All run modes are supported.
-    PowerShell Console (PS 5.1): HPCPackCommunicationTest may be partially functional depending on environment (run as Administrator, Microsoft.Hpc module available, valid HPCPackCommunication certificate).
+    PowerShell Console (PS 5.1): CommunicationTest may be partially functional depending on environment (run as Administrator, Microsoft.Hpc module available, valid HPCPackCommunication certificate).
 
 .DESCRIPTION
     A single PowerShell script that runs a comprehensive set of cluster/node checks
@@ -16,97 +16,14 @@
 .PARAMETER SchedulerNode
     HPC head node name or IP. Defaults to 'headnode'.
 
+
 .PARAMETER RunMode
-    One of the following run modes (case-insensitive):
-    - All                       : Run all checks in sequence.
-    - NetworkFix                : Quick network checks and optional repairs.
-    - PortTest                  : Test TCP port reachability (single or range).
-    - CommandTest               : Basic Microsoft.Hpc cmdlets smoke test.
-    - NodeValidation            : Summarize node states and health.
-    - NodeConfig                : Local node HPC/MSMPI configuration snapshot.
-    - ClusterMetadata           : Cluster overview and key properties.
-    - NodeTemplates             : List node templates and groups.
-    - JobHistory                : Recent jobs (supports -JobId and -NodeName/-DaysBack).
-    - ClusterMetrics            : List metrics and current values.
-    - MetricValueHistory        : Export historical metric values; honors -MetricStartDate, -MetricEndDate, -MetricOutputPath.
-    - ClusterTopology           : Role counts and basic reachability view.
-    - ServicesStatus            : HPC/MPI/SQL service states summary.
-    - DiagnosticTests           : Built-in HPC Pack diagnostic tests.
-    - SystemInfo                : OS and hardware basics.
-    - AdvancedHealth            : Additional health probes.
-    - NodeHistory               : Node state history (use with -NodeName and -DaysBack).
-    - HPCPackCommunicationTest  : Certificate and endpoint checks for HPC Pack communication.
-    - ListRunModes              : Print available run modes.
-
-.PARAMETER FixNetworkIssues
-    When set, performs optional network repair steps in NetworkFix mode (winsock reset,
-    DNS flush, and basic firewall openings).
-
-.PARAMETER EnableMpiTesting
-    Reserved for future MPI verification steps.
-
-.PARAMETER TimeoutSeconds
-    General timeout (in seconds) for selected operations. Reserved for future use.
-
-.PARAMETER ShowHelp
-    Show help and available run modes.
-
-.PARAMETER ExportToFile
-    When set, exports all console output to a transcript file (default: report.log).
-
-.PARAMETER ReportFile
-    Optional path for the transcript output. Defaults to 'report.log' when -ExportToFile is used.
-
-.PARAMETER JobId
-    When provided, retrieves detailed information for the specific job using Get-HpcJobDetails.
-    Can be used alone (prints only job details) or alongside other RunModes (prints job details after the selected mode).
-
-.PARAMETER NodeName
-    When used with RunMode JobHistory, also prints node state history for the specified node.
-
-.PARAMETER DaysBack
-    Number of days back to include for node history (used with -NodeName). Default is 7.
-
-.PARAMETER CliTips
-    Print only the CLI tips (PowerShell) for the selected RunMode(s). Suppresses all other
-    output. Use together with -RunMode to focus on a specific section, or with -RunMode All
-    to list tips from all sections.
-
-.EXAMPLE
-    .\HPC-pack-Insight.ps1 -RunMode All -SchedulerNode headnode
-
-.EXAMPLE
-    .\HPC-pack-Insight.ps1 -RunMode ClusterTopology -SchedulerNode headnode
-
-.LINK
-    Microsoft HPC Pack PowerShell command reference
-    https://learn.microsoft.com/en-us/powershell/high-performance-computing/microsoft-hpc-pack-command-reference?view=hpc19-ps
-    https://learn.microsoft.com/en-us/powershell/high-performance-computing/using-service-log-files-for-hpc-pack?view=hpc19-ps
-
-.NOTES
-    Author         : Ricardo S Jacomini
-    Team           : Azure HPC + AI  
-    Email          : ricardo.jacomini@microsoft.com
-    Version        : 0.6.0
-    Last Modified  : 2025-08-20
-    Script Name    : HPC-pack-Insight.ps1
-    Tags           : Diagnostics, HPCPack
 #>
 
-[CmdletBinding()]
-param(
-    [Parameter(Position=0)]
-    [ValidateSet(
-        "All",
-    "NetworkFix","PortTest","CommandTest","NodeValidation",
-        "NodeConfig","ClusterMetadata","NodeTemplates","JobHistory",
-        "ClusterMetrics","MetricValueHistory","ClusterTopology","ServicesStatus","DiagnosticTests",
-    "SystemInfo","AdvancedHealth","NodeHistory","HPCPackCommunicationTest",
-        "ListRunModes"
-    )]
-    [string]$RunMode = "All",
 
-    [Parameter(Position=1)]
+
+param(
+    [string]$RunMode = "All",
     [string]$SchedulerNode = "headnode",
     [switch]$FixNetworkIssues,
     [switch]$TestHpcNodePorts,
@@ -120,9 +37,7 @@ param(
     [switch]$ExportToFile,
     [Alias('Out','Log','LogFile')]
     [string]$ReportFile = 'report.log',
-
     [int]$JobId,
-
     [string]$NodeName,
     [int]$DaysBack = 7,
     [switch]$CliTips,
@@ -139,6 +54,14 @@ try {
     elseif ($MyInvocation -and $MyInvocation.MyCommand -and $MyInvocation.MyCommand.Name) { $Script:SelfName = $MyInvocation.MyCommand.Name }
     else { $Script:SelfName = 'script.ps1' }
 } catch { $Script:SelfName = 'script.ps1' }
+# Script filename for dynamic help/usage strings
+try {
+    if ($PSCommandPath) { $Script:SelfName = Split-Path -Path $PSCommandPath -Leaf }
+    elseif ($MyInvocation -and $MyInvocation.MyCommand -and $MyInvocation.MyCommand.Name) { $Script:SelfName = $MyInvocation.MyCommand.Name }
+    else { $Script:SelfName = 'script.ps1' }
+} catch { $Script:SelfName = 'script.ps1' }
+
+# CLI tips-only logic for single run mode
 
 # Normalize alternate help triggers passed as raw args (e.g., --help or -?)
 if ($args -contains '--help' -or $args -contains '-?') { $ShowHelp = $true }
@@ -152,13 +75,9 @@ if ($DeepHelp -and -not $ShowHelp) { $ShowHelp = $true }
 $Script:CliTipsOnly = [bool]$CliTips
 if ($Script:CliTipsOnly) { $VerbosePreference = 'SilentlyContinue' }
 
-# When in tips-only mode, shadow Write-Host so normal output is suppressed.
-if ($Script:CliTipsOnly) {
-    function Write-Host {
-        param([Parameter(ValueFromRemainingArguments=$true)][object[]]$args)
-        # no-op to suppress non-tip output
-    }
-}
+### Tips-only block: run after all functions are defined
+# At the end of the script, add:
+
 
 # Note: HPC CLI token '/detailed:true' is not a valid RunMode; prefer -Verbose or pass it to 'job view' directly.
 
@@ -210,6 +129,15 @@ function Write-Section {
     Write-Host ""; Write-Host ("-"*90) -ForegroundColor $Color
     Write-Host ("  " + $Title) -ForegroundColor $Color
     Write-Host ("-"*90) -ForegroundColor $Color
+}
+
+# Helper: header for CLI tips-only mode
+function Write-CliHeader {
+    param([string]$Name)
+    if (-not $Name) { return }
+    Write-Host ""
+    Write-Host ("===== {0} ======" -f $Name) -ForegroundColor Yellow
+    Write-Host ""
 }
 
 # Helper: emit a compact CLI tips block only when -Verbose is enabled
@@ -300,6 +228,36 @@ function Test-HpcNodePorts {
 
 # Self-contained implementations for each RunMode
 function Invoke-NetworkFix {
+    if ($Script:CliTipsOnly) {
+    Write-CliHeader -Name 'Network Fix'
+        Write-CliTips @(
+            '# Repair network connectivity',
+            'netsh winsock reset',
+            '# Open common HPC ports in firewall',
+            'New-NetFirewallRule -DisplayName "HPC-Port-40000" -Direction Inbound -Protocol TCP -LocalPort 40000 -Action Allow -Profile Any',
+            "# Show IPv4 default route",
+            "Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0'",
+            "# Show IPv6 default route",
+            "Get-NetRoute -AddressFamily IPv6 -DestinationPrefix '::/0'",
+            "# DNS resolution test",
+            "Resolve-DnsName microsoft.com; Resolve-DnsName azure.com",
+            "# Repairs (optional): netsh winsock reset; ipconfig /flushdns",
+            "# Check MS-MPI version in registry",
+            "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\MPI' | Select Version",
+            "# Check MS-MPI Launch and MPI services",
+            "Get-Service MSMpiLaunchSvc, msmpi -ErrorAction SilentlyContinue | Select Name,Status,StartType",
+            "# Local MPI smoke test",
+            "mpiexec -n 1 hostname",
+            "# Test a range of TCP ports via NetworkFix run mode",
+            "Test-HpcNodePorts -NodeName $SchedulerNode -Port 443",
+            "Test-HpcNodePorts -NodeName IaaSCN104 -Ports @(40000..40003)",
+            "# List HPC nodes and states",
+            "Get-HpcNode -Scheduler $SchedulerNode | Select NetBiosName,NodeState,HealthState,NodeTemplate | Format-Table -Auto",
+            "# Reachability: ",
+            "Test-Connection <NodeName> -Count 1 -Quiet"    
+            )
+        return
+    }
     Write-Section "NETWORK CONNECTIVITY CHECKS"
     try {
         $gw4 = (Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1).NextHop
@@ -312,11 +270,6 @@ function Invoke-NetworkFix {
         } else {
             Write-Host "  ⚠️  No default route found (IPv4 or IPv6)" -ForegroundColor Yellow
         }
-        Write-CliTips @(
-            "# List HPC nodes and states",
-            "Get-HpcNode -Scheduler $SchedulerNode | Select NetBiosName,NodeState,HealthState,NodeTemplate | Format-Table -Auto",
-            "# Reachability: Test-Connection <NodeName> -Count 1 -Quiet"
-        )
         # DNS reachability quick check for common hosts
         $dnsHosts = @('microsoft.com','azure.com')
         foreach ($h in $dnsHosts) {
@@ -326,16 +279,6 @@ function Invoke-NetworkFix {
         }
     }
     catch { }
-
-    Write-CliTips @(
-    "# Show IPv4 default route",
-        "Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0'",
-    "# Show IPv6 default route",
-        "Get-NetRoute -AddressFamily IPv6 -DestinationPrefix '::/0'",
-    "# DNS resolution test",
-        "Resolve-DnsName microsoft.com; Resolve-DnsName azure.com",
-        "# Repairs (optional): netsh winsock reset; ipconfig /flushdns"
-    )
 
     # Verbose network snapshot when -Verbose was provided to the script
     if ($VerbosePreference -eq 'Continue') {
@@ -428,20 +371,20 @@ function Invoke-NetworkFix {
         Write-Host ("  Ports......: {0}" -f ($portList -join ', ')) -ForegroundColor White
         Test-HpcNodePorts -NodeName $targetNode -Ports $portList
     }
-    Write-CliTips @(
-    "# Check MS-MPI version in registry",
-        "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\MPI' | Select Version",
-    "# Check MS-MPI Launch and MPI services",
-        "Get-Service MSMpiLaunchSvc, msmpi -ErrorAction SilentlyContinue | Select Name,Status,StartType",
-    "# Local MPI smoke test",
-    "mpiexec -n 1 hostname",
-    "# Test a range of TCP ports via NetworkFix run mode",
-    ".\\$Script:SelfName NetworkFix -TestHpcNodePorts -NodeName IaaSCN104 -Port 40002",
-    ".\\$Script:SelfName NetworkFix -TestHpcNodePorts -NodeName IaaSCN104 -Ports @(40000..40003)"
-    )
 }
 
 function Invoke-CommandTest {
+    if ($Script:CliTipsOnly) {
+    Write-CliHeader -Name 'Command Test'
+        Write-CliTips @(
+            "# Import HPC PowerShell module",
+            "Import-Module Microsoft.Hpc",
+            "# Quick cluster overview (name/version/node count)",
+            "Get-HpcClusterOverview -Scheduler $SchedulerNode"
+            )
+        return
+    }
+
     Write-Section "HPC COMMAND TESTING"
     if (-not (Import-HpcModule -Quiet)) { Write-Host "  ❌ HPC module not available" -ForegroundColor Red; return }
     try {
@@ -450,15 +393,27 @@ function Invoke-CommandTest {
             Write-Host "  ✅ Cluster: $($ov.ClusterName) | Version: $($ov.Version) | Nodes: $($ov.TotalNodeCount)" -ForegroundColor Green
         }
     } catch { Write-Host "  ❌ Get-HpcClusterOverview: $($_.Exception.Message)" -ForegroundColor Red }
-    Write-CliTips @(
-    "# Import HPC PowerShell module",
-        "Import-Module Microsoft.Hpc",
-    "# Quick cluster overview (name/version/node count)",
-        "Get-HpcClusterOverview -Scheduler $SchedulerNode"
-    )
 }
 
 function Invoke-NodeValidation {
+    if ($Script:CliTipsOnly) {
+    Write-CliHeader -Name 'NodeValidation'
+        Write-CliTips @(
+            '# Summarize node states and health',
+            'Get-HpcNode -Scheduler <SchedulerNode> | Select NetBiosName,NodeState,HealthState | Format-Table -Auto'
+            "# Count nodes by state",
+            "Get-HpcNode -Scheduler $SchedulerNode | Group-Object NodeState | Select Name,Count",
+            "# Count nodes by health",
+            "Get-HpcNode -Scheduler $SchedulerNode | Group-Object HealthState | Select Name,Count",
+            "# First 10 nodes with HealthState != OK",
+            "Get-HpcNode -Scheduler $SchedulerNode | Where-Object { $_.HealthState -ne 'OK' } | Select NetBiosName,NodeState,HealthState -First 10"
+            "# OS version and architecture",
+            "Get-CimInstance Win32_OperatingSystem | Select Caption,Version,OSArchitecture",
+            "# Computer name, domain, and memory",
+            "Get-CimInstance Win32_ComputerSystem | Select Name,Domain,TotalPhysicalMemory"
+        )
+        return
+    }
     Write-Section "COMPREHENSIVE HPC NODE VALIDATION"
     if (-not (Import-HpcModule -Quiet)) { Write-Host "  ❌ HPC module not available. Skipping." -ForegroundColor Red; return }
     try { $nodes = Get-HpcNode -Scheduler $SchedulerNode -ErrorAction SilentlyContinue } catch { $nodes = $null }
@@ -471,15 +426,6 @@ function Invoke-NodeValidation {
             Write-Host "  ⚠️  Nodes needing attention:" -ForegroundColor Yellow
             $crit | ForEach-Object { Write-Host "    $($_.NetBiosName): State=$($_.NodeState) Health=$($_.HealthState)" }
         }
-
-        Write-CliTips @(
-            "# Count nodes by state",
-            "Get-HpcNode -Scheduler $SchedulerNode | Group-Object NodeState | Select Name,Count",
-            "# Count nodes by health",
-            "Get-HpcNode -Scheduler $SchedulerNode | Group-Object HealthState | Select Name,Count",
-            "# First 10 nodes with HealthState != OK",
-            "Get-HpcNode -Scheduler $SchedulerNode | Where-Object { $_.HealthState -ne 'OK' } | Select NetBiosName,NodeState,HealthState -First 10"
-        )
 
         # Verbose: deeper breakdowns and optional per-node snapshot
         if ($VerbosePreference -eq 'Continue') {
@@ -549,15 +495,36 @@ function Invoke-NodeValidation {
     else {
         Write-Host "  ⚠️  No node data returned" -ForegroundColor Yellow
     }
-    Write-CliTips @(
-    "# OS version and architecture",
-        "Get-CimInstance Win32_OperatingSystem | Select Caption,Version,OSArchitecture",
-    "# Computer name, domain, and memory",
-        "Get-CimInstance Win32_ComputerSystem | Select Name,Domain,TotalPhysicalMemory"
-    )
+
 }
 
 function Invoke-NodeConfig {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Node Config'
+        Write-CliTips @(
+            '# HPC registry values on this node',
+            "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\HPC'",
+            '# Computer identity and domain',
+            'Get-CimInstance Win32_ComputerSystem | Select Name,Domain',
+            '# MS-MPI service states',
+            'Get-Service MsMpiLaunchSvc, msmpi -ErrorAction SilentlyContinue | Select Name,Status,StartType',
+            '# Sample CPU usage once',
+            "Get-Counter '\\Processor(_Total)\\% Processor Time' -SampleInterval 1 -MaxSamples 1",
+            '# Available memory (MB)',
+            "Get-Counter '\\Memory\\Available MBytes' -SampleInterval 1 -MaxSamples 1"
+            "# HPC registry values on this node",
+            "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\HPC'",
+            "# Computer identity and domain",
+            "Get-CimInstance Win32_ComputerSystem | Select Name,Domain",
+            "# MS-MPI service states",
+            "Get-Service MsMpiLaunchSvc, msmpi -ErrorAction SilentlyContinue | Select Name,Status,StartType"
+            "# Sample CPU usage once",
+            "Get-Counter '\\Processor(_Total)\\% Processor Time' -SampleInterval 1 -MaxSamples 1",
+            "# Available memory (MB)",
+            "Get-Counter '\\Memory\\Available MBytes' -SampleInterval 1 -MaxSamples 1"
+        )
+        return
+    }
     Write-Section "NODE CONFIGURATION"
     $key = 'HKLM:\SOFTWARE\Microsoft\HPC'
     if(Test-Path $key){
@@ -612,24 +579,23 @@ function Invoke-NodeConfig {
                 Write-Host ("  Product Edition......: {0}" -f $edition) -ForegroundColor White
             } catch {}
         }
-        Write-CliTips @(
-            "# HPC registry values on this node",
-            "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\HPC'",
-            "# Computer identity and domain",
-            "Get-CimInstance Win32_ComputerSystem | Select Name,Domain",
-            "# MS-MPI service states",
-            "Get-Service MsMpiLaunchSvc, msmpi -ErrorAction SilentlyContinue | Select Name,Status,StartType"
-        )
+
     } else { Write-Host "  ⚠️  HPC registry key not found" -ForegroundColor Yellow }
-    Write-CliTips @(
-        "# Sample CPU usage once",
-        "Get-Counter '\\Processor(_Total)\\% Processor Time' -SampleInterval 1 -MaxSamples 1",
-        "# Available memory (MB)",
-        "Get-Counter '\\Memory\\Available MBytes' -SampleInterval 1 -MaxSamples 1"
-    )
+    
+
 }
 
 function Invoke-ClusterMetadata {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Cluster Metadata'
+        Write-CliTips @(
+            "# Cluster overview",
+            "Get-HpcClusterOverview -Scheduler $SchedulerNode",
+            "# All cluster properties",
+            "Get-HpcClusterProperty -Scheduler $SchedulerNode | Select Name,Value"
+        )
+        return
+    }
     Write-Section "CLUSTER METADATA & OVERVIEW"
     if (Import-HpcModule -Quiet) {
         try {
@@ -707,18 +673,23 @@ function Invoke-ClusterMetadata {
                 }
             }
         } catch {}
-        Write-CliTips @(
-            "# Cluster overview",
-            "Get-HpcClusterOverview -Scheduler $SchedulerNode",
-            "# All cluster properties",
-            "Get-HpcClusterProperty -Scheduler $SchedulerNode | Select Name,Value"
-        )
+
     } else {
         Write-Host "  ⚠️  HPC module not available" -ForegroundColor Yellow
     }
 }
 
 function Invoke-NodeTemplates {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Node Templates'
+        Write-CliTips @(
+            "# List node templates",
+            "Get-HpcNodeTemplate -Scheduler $SchedulerNode | Select Name,Type,Priority",
+            "# List HPC groups",
+            "Get-HpcGroup -Scheduler $SchedulerNode | Select Name,Description"
+        )
+        return
+    }
     Write-Section "NODE TEMPLATES & GROUPS"
     if (Import-HpcModule -Quiet) {
         try {
@@ -762,18 +733,24 @@ function Invoke-NodeTemplates {
                 }
             }
         } catch {}
-        Write-CliTips @(
-            "# List node templates",
-            "Get-HpcNodeTemplate -Scheduler $SchedulerNode | Select Name,Type,Priority",
-            "# List HPC groups",
-            "Get-HpcGroup -Scheduler $SchedulerNode | Select Name,Description"
-        )
+
     } else {
         Write-Host "  ⚠️  HPC module not available" -ForegroundColor Yellow
     }
 }
 
 function Invoke-JobHistory {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Job History'
+        Write-CliTips @(
+            '# Job details',
+            'Get-HpcJob -Id <JobId> -Scheduler <SchedulerNode>; Get-HpcTask -JobId <JobId> -Scheduler <SchedulerNode>'
+            "# Show last 20 jobs (table)",
+            "Get-HpcJob -Scheduler $SchedulerNode -State All | Sort-Object SubmitTime -Descending | Select-Object -First 20 | Format-Table Id,Name,State,Owner,SubmitTime -Auto",
+            "# Job details: Get-HpcJob -Id <JobId> -Scheduler $SchedulerNode; Get-HpcTask -JobId <JobId> -Scheduler $SchedulerNode"
+        )
+        return
+    }
     Write-Section "JOB HISTORY"
     if (Import-HpcModule -Quiet) {
         try {
@@ -860,11 +837,6 @@ function Invoke-JobHistory {
         Write-Host "  ⚠️  HPC module not available" -ForegroundColor Yellow
     }
 
-    Write-CliTips @(
-    "# Show last 20 jobs (table)",
-        "Get-HpcJob -Scheduler $SchedulerNode -State All | Sort-Object SubmitTime -Descending | Select-Object -First 20 | Format-Table Id,Name,State,Owner,SubmitTime -Auto",
-        "# Job details: Get-HpcJob -Id <JobId> -Scheduler $SchedulerNode; Get-HpcTask -JobId <JobId> -Scheduler $SchedulerNode"
-    )
 }
  
 
@@ -911,6 +883,16 @@ function Get-HpcJobDetails {
 }
 
 function Invoke-ClusterMetrics {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Cluster Metrics'
+        Write-CliTips @(
+            '# Get cluster metrics',
+            "Get-HpcMetric -Scheduler $SchedulerNode",
+            '# Example: Get metric values for a node',
+            "Get-HpcMetricValue -Scheduler $SchedulerNode -MetricName HPCCpuUsage -NodeName <NodeName>"
+        )
+        return
+    }
     Write-Section "CLUSTER METRICS"
     if (Import-HpcModule -Quiet) {
         try {
@@ -1030,10 +1012,7 @@ function Invoke-ClusterMetrics {
         Write-Host "  ⚠️  HPC module not available" -ForegroundColor Yellow
     }
 
-    Write-CliTips @(
-        "Get-HpcMetric -Scheduler $SchedulerNode",
-        "# Example: Get-HpcMetricValue -Scheduler $SchedulerNode -MetricName HPCCpuUsage -NodeName <NodeName>"
-    )
+
 }
 
 function Invoke-MetricValueHistory {
@@ -1047,18 +1026,20 @@ function Invoke-MetricValueHistory {
     Write-Section "METRIC VALUE HISTORY"
     if (-not (Import-HpcModule -Quiet)) { Write-Host "  ❌ HPC module not available" -ForegroundColor Red; return }
 
-    Write-CliTips @(
-        '# Export last 7 days of metric value history to CSV',
-    '$startDate = (Get-Date).AddDays(-7)',
-        '$endDate = Get-Date',
-        'Get-HpcMetricValueHistory -StartDate $startDate -EndDate $endDate | Export-Csv -Path "MetricValueHistory.csv" -NoTypeInformation'
-    '# Export a specific date range to a custom path',
-    "$startDate = Get-Date '2025-08-01'",
-    "$endDate = Get-Date '2025-08-14'",
-    'Get-HpcMetricValueHistory -StartDate $startDate -EndDate $endDate | Export-Csv -Path "C:\\temp\\MetricValueHistory.csv" -NoTypeInformation'
-    )
-
-    if ($Script:CliTipsOnly) { return }
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Metric Value History'
+        Write-CliTips @(
+            '# Export last 7 days of metric value history to CSV',
+            '$startDate = (Get-Date).AddDays(-7)',
+            '$endDate = Get-Date',
+            'Get-HpcMetricValueHistory -StartDate $startDate -EndDate $endDate | Export-Csv -Path "MetricValueHistory.csv" -NoTypeInformation',
+            '# Export a specific date range to a custom path',
+            "$startDate = Get-Date '2025-08-01'",
+            "$endDate = Get-Date '2025-08-14'",
+            'Get-HpcMetricValueHistory -StartDate $startDate -EndDate $endDate | Export-Csv -Path "C:\\temp\\MetricValueHistory.csv" -NoTypeInformation'
+        )
+        return
+    }
 
     try {
         $rows = Get-HpcMetricValueHistory -Scheduler $SchedulerNode -StartDate $StartDate -EndDate $EndDate -ErrorAction Stop
@@ -1091,6 +1072,14 @@ function Invoke-MetricValueHistory {
 }
 
 function Invoke-ClusterTopology {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Cluster Topology'
+        Write-CliTips @(
+            '# Role counts and reachability',
+            'Get-HpcNode -Scheduler <SchedulerNode> | Group-Object NodeRole | Select Name,Count'
+        )
+        return
+    }
     Write-Section "CLUSTER TOPOLOGY & NODE ANALYSIS"
     if (Import-HpcModule -Quiet) {
         try {
@@ -1207,6 +1196,16 @@ function Invoke-ClusterTopology {
 }
 
 function Invoke-ServicesStatus {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Services Status'
+        Write-CliTips @(
+            '# HPC/MPI/SQL service states',
+            'Get-Service | Where-Object { $_.DisplayName -like "*HPC*" -or $_.DisplayName -like "*MPI*" -or $_.DisplayName -like "*SQL*" }',
+            "# Include StartMode via CIM (used for summary)",
+            'Get-CimInstance Win32_Service | Where-Object { $_.DisplayName -like "*HPC*" -or $_.DisplayName -like "*MPI*" -or $_.DisplayName -like "*SQL*" } | Sort-Object DisplayName'
+        )
+        return
+    }
     Write-Section "SERVICES STATUS (HPC/MPI/SQL)"
     # Use CIM to include StartMode for summary details
     $svcs = Get-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue |
@@ -1229,13 +1228,6 @@ function Invoke-ServicesStatus {
     Write-Host ("   Manual Start.........: {0}" -f $manual) -ForegroundColor White
     Write-Host ("   Disabled.............: {0}" -f $disabled) -ForegroundColor White
 
-    Write-CliTips @(
-        "# Filter HPC/MPI/SQL services (classic Get-Service)",
-        'Get-Service | Where-Object { $_.DisplayName -like "*HPC*" -or $_.DisplayName -like "*MPI*" -or $_.DisplayName -like "*SQL*" }',
-        "# Include StartMode via CIM (used for summary)",
-        'Get-CimInstance Win32_Service | Where-Object { $_.DisplayName -like "*HPC*" -or $_.DisplayName -like "*MPI*" -or $_.DisplayName -like "*SQL*" } | Sort-Object DisplayName'
-    )
-
     Write-Host ""; Write-Host "Service Details:" -ForegroundColor Green
     $headerFmt = "{0,-35} {1,-9} {2,-12}"
     Write-Host ($headerFmt -f 'SERVICE NAME','STATUS','START TYPE') -ForegroundColor White
@@ -1248,6 +1240,20 @@ function Invoke-ServicesStatus {
 }
 
 function Invoke-DiagnosticTests {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Diagnostic Tests'
+        Write-CliTips @(
+            '# Run built-in HPC Pack diagnostic tests',
+            'Get-HpcTest -Scheduler <SchedulerNode> -TestName <TestName>'
+            '# Check current TrustedHosts',
+            'Get-Item WSMan:\localhost\Client\TrustedHosts',
+            '# Add node to TrustedHosts (overwrites existing value)',
+            'Set-Item WSMan:\localhost\Client\TrustedHosts -Value "<NodeName>" -Force',
+            '# Append node to TrustedHosts (safer)',
+            'Set-Item WSMan:\localhost\Client\TrustedHosts -Value "<NodeName>" -Concatenate -Force'
+        )
+        return
+    }
     Write-Section "DIAGNOSTIC TESTS"
     if (Import-HpcModule -Quiet) {
         try {
@@ -1318,15 +1324,7 @@ function Invoke-DiagnosticTests {
                         }
                     }
                 } catch {}
-
-                Write-CliTips @(
-                    '# Check current TrustedHosts',
-                    'Get-Item WSMan:\localhost\Client\TrustedHosts',
-                    '# Add node to TrustedHosts (overwrites existing value)',
-                    'Set-Item WSMan:\localhost\Client\TrustedHosts -Value "<NodeName>" -Force',
-                    '# Append node to TrustedHosts (safer)',
-                    'Set-Item WSMan:\localhost\Client\TrustedHosts -Value "<NodeName>" -Concatenate -Force'
-                )
+ 
             }
         }
     }
@@ -1525,6 +1523,16 @@ function Invoke-MpiSmokeTest {
 }
 
 function Invoke-SystemInfo {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'System Info'
+        Write-CliTips @(
+            '# OS version and architecture',
+            'Get-CimInstance Win32_OperatingSystem | Select Caption,Version,OSArchitecture',
+            '# System manufacturer/model and memory',
+            'Get-CimInstance Win32_ComputerSystem | Select Name,Domain,Manufacturer,Model,TotalPhysicalMemory'
+        )
+        return
+    }
     Write-Section "SYSTEM INFORMATION"
     try {
         $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
@@ -1540,9 +1548,14 @@ function Invoke-SystemInfo {
         $lastBoot  = $os.LastBootUpTime
         $uptime    = (Get-Date) - $lastBoot
         $uptimeFmt = ("{0:d2}d {1:d2}h {2:d2}m" -f [int]$uptime.Days,[int]$uptime.Hours,[int]$uptime.Minutes)
+        $cpuName   = $null; if ($cpu) { $cpuName = if ($cpu.Caption) { $cpu.Caption } else { $cpu.Name } }
 
         Write-Host "  OS: $osName $osVersion ($arch)" -ForegroundColor White
         Write-Host "  Computer: $($cs.Name) Domain=$domain RAM=$($ramGB)GB" -ForegroundColor White
+        if ($lp) { Write-Host ("  LogicalProcessors: {0}" -f $lp) -ForegroundColor White }
+        if ($cpuName) { Write-Host ("  CPU: {0}" -f $cpuName) -ForegroundColor White }
+        Write-Host ("  Last Boot: {0}" -f $lastBoot) -ForegroundColor White
+        Write-Host ("  Uptime: {0}" -f $uptimeFmt) -ForegroundColor White
 
     if ($VerbosePreference -eq 'Continue') {
             Write-Host ""; Write-Host "SYSTEM INFORMATION" -ForegroundColor White
@@ -1553,7 +1566,6 @@ function Invoke-SystemInfo {
             Write-Host ("Total RAM............: {0} GB" -f $ramGB) -ForegroundColor White
             if ($lp) { Write-Host ("Logical Processors...: {0}" -f $lp) -ForegroundColor White }
             Write-Host ("Domain...............: {0}" -f $domain) -ForegroundColor White
-            $cpuName = $null; if ($cpu) { $cpuName = if ($cpu.Caption) { $cpu.Caption } else { $cpu.Name } }
             if ($cpuName) { Write-Host ("Processor............: {0}" -f $cpuName) -ForegroundColor White }
             Write-Host ("Last Boot Time.......: {0}" -f $lastBoot) -ForegroundColor White
             Write-Host ("System Uptime........: {0}" -f $uptimeFmt) -ForegroundColor White
@@ -1579,6 +1591,19 @@ function Invoke-SystemInfo {
 }
 
 function Invoke-AdvancedHealth {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Advanced health checks'
+        Write-CliTips @(
+            'Get-Counter "\\Processor(_Total)\\% Processor Time"',
+            'Get-Counter "\\Memory\\Available MBytes"',
+            'Get-Counter "\\Network Interface(*)\\Bytes Total/sec"',
+            'Get-NetAdapter | Where-Object { $_.InterfaceDescription -match "InfiniBand|Mellanox|RDMA" }',
+            'Get-Service | Where-Object { $_.DisplayName -match "RDMA|NetworkDirect" }',
+            'Get-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\MPI"',
+            'Get-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\HPC"'
+        )
+        return
+    }
     Write-Section "ADVANCED HEALTH"
     try {
         # Concise default summary
@@ -1648,7 +1673,6 @@ function Invoke-AdvancedHealth {
                 $perfCounters = @{
                     'CPU Usage'          = (Get-Counter '\\Processor(_Total)\\% Processor Time' -SampleInterval 1 -MaxSamples 1 -ErrorAction SilentlyContinue)
                     'Memory Available'   = (Get-Counter '\\Memory\\Available MBytes' -SampleInterval 1 -MaxSamples 1 -ErrorAction SilentlyContinue)
-                    'Disk Queue Length'  = (Get-Counter '\\PhysicalDisk(_Total)\\Current Disk Queue Length' -SampleInterval 1 -MaxSamples 1 -ErrorAction SilentlyContinue)
                     'Network Utilization'= (Get-Counter '\\Network Interface(*)\\Bytes Total/sec' -SampleInterval 1 -MaxSamples 1 -ErrorAction SilentlyContinue)
                 }
                 if ($perfCounters['CPU Usage']) {
@@ -1658,10 +1682,6 @@ function Invoke-AdvancedHealth {
                 if ($perfCounters['Memory Available']) {
                     $memGB = [math]::Round(($perfCounters['Memory Available'].CounterSamples[0].CookedValue / 1024),2)
                     Write-Host ("   Available Memory.....: {0} GB" -f $memGB) -ForegroundColor White
-                }
-                if ($perfCounters['Disk Queue Length']) {
-                    $dq = [math]::Round($perfCounters['Disk Queue Length'].CounterSamples[0].CookedValue,2)
-                    Write-Host ("   Disk Queue Length....: {0}" -f $dq) -ForegroundColor White
                 }
                 if ($perfCounters['Network Utilization']) {
                     $totalBytes = ($perfCounters['Network Utilization'].CounterSamples | Measure-Object -Property CookedValue -Sum).Sum
@@ -1814,6 +1834,7 @@ function Invoke-AdvancedHealth {
 function Get-InsightRunModes {
     @(
     @{ Name='All';            Source='Internal Suite'; Description='Run the full internal diagnostics suite' }
+    @{ Name='ListModules';    Source='Internal'; Description='List all implemented run modes' }
     @{ Name='NetworkFix';     Source='Internal'; Description='Network analysis and optional auto-repair' }
     @{ Name='PortTest';       Source='Internal'; Description='Test TCP port reachability (single or range)' }
     @{ Name='CommandTest';    Source='Internal'; Description='HPC command/module validation' }
@@ -1822,21 +1843,30 @@ function Get-InsightRunModes {
     @{ Name='ClusterMetadata';Source='Internal'; Description='Cluster overview and properties' }
     @{ Name='NodeTemplates';  Source='Internal'; Description='Node templates and groups' }
     @{ Name='JobHistory';     Source='Internal'; Description='Job queue and history analysis' }
+    @{ Name='JobDetails';     Source='Internal'; Description='Print details for a specific job (Get-HpcJobDetails)' }
     @{ Name='NodeHistory';    Source='Internal'; Description='Show node state history for a node' }
     @{ Name='ClusterMetrics'; Source='Internal'; Description='Performance metrics and monitoring' }
     @{ Name='MetricValueHistory'; Source='Internal'; Description='Export historical metric values between dates' }
     @{ Name='ClusterTopology';Source='Internal'; Description='Node topology and network reachability' }
     @{ Name='ServicesStatus'; Source='Internal'; Description='HPC services status' }
     @{ Name='DiagnosticTests';Source='Internal'; Description='Built-in diagnostic tests (certtest)' }
-    @{ Name='HPCPackCommunicationTest'; Source='Internal'; Description='Compute node certificate discovery and headnode API test' }
+    @{ Name='CommunicationTest'; Source='Internal'; Description='Compute node certificate discovery and headnode API test' }
     @{ Name='SystemInfo';     Source='Internal'; Description='System information/specs' }
     @{ Name='AdvancedHealth'; Source='Internal'; Description='Advanced health checks and recommendations' }
     )
 }
 
 # Windows (compute node) HPCPackCommunication test
-function Invoke-HPCPackCommunicationTest {
-    Write-Section "HPCPACK COMMUNICATION CERT & ENDPOINT TEST"
+function Invoke-CommunicationTest {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Communication - Certificate Test'
+        Write-CliTips @(
+            '# Discover HPCPackCommunication certificate on Windows',
+            'Get-ChildItem Cert:\\LocalMachine\\My | Where-Object { $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date) } | Select-Object -First 1'
+        )
+        return
+    }
+    Write-Section "COMMUNICATION CERT & ENDPOINT TEST"
 
     # Emit CLI tips variant when requested
     Write-CliTips @(
@@ -1983,6 +2013,20 @@ public static class TrustAllCertsPolicy {
 
 function Invoke-JobDetails {
     param([int]$JobId)
+    if ($Script:CliTipsOnly) {
+    Write-CliHeader -Name 'Job Details'
+        Write-CliTips @(
+            '# Print details for a specific job using HPC Pack cmdlet',
+            'Get-HpcJobDetails -JobId <N>',
+            '# Example:',
+            'Get-HpcJobDetails -JobId 12345'
+            "# Get job object",
+            "Get-HpcJob -Id $JobId -Scheduler $SchedulerNode",
+            "# List tasks for the job (table)",
+            "Get-HpcTask -JobId $JobId -Scheduler $SchedulerNode | Format-Table Id,Name,State,ExitCode -Auto"
+        )
+        return
+    }
     if (-not $JobId) { return }
     Write-Section ("JOB DETAILS #{0}" -f $JobId)
     try {
@@ -2027,12 +2071,6 @@ function Invoke-JobDetails {
             Write-Host ("    > {0}" -f ($cmd2 -join ' ')) -ForegroundColor Gray
         }
 
-        Write-CliTips @(
-            "# Get job object",
-            "Get-HpcJob -Id $JobId -Scheduler $SchedulerNode",
-            "# List tasks for the job (table)",
-            "Get-HpcTask -JobId $JobId -Scheduler $SchedulerNode | Format-Table Id,Name,State,ExitCode -Auto"
-        )
     } catch {
         Write-Host ("  ⚠️  Error printing job details: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
     }
@@ -2067,6 +2105,14 @@ function Get-HpcNodeHistory {
 
 function Invoke-NodeHistory {
     param([string]$NodeName,[int]$DaysBack = 7)
+    if ($Script:CliTipsOnly) {
+    Write-CliHeader -Name 'Node History'
+        Write-CliTips @(
+            '# Node state history',
+            'Get-HpcNodeHistory -Scheduler <SchedulerNode> -NodeName <NodeName> -DaysBack <DaysBack>'
+        )
+        return
+    }
     if (-not $NodeName) { return }
     Write-Section ("NODE HISTORY: {0} (Last {1} days)" -f $NodeName, $DaysBack)
     try {
@@ -2093,6 +2139,16 @@ function Invoke-NodeHistory {
 
 # Standalone port test run mode
 function Invoke-PortTest {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'Port Test'
+        Write-CliTips @(
+            "# Test a single port on a node",
+            "Test-NetConnection -ComputerName <NodeName> -Port <Port> -InformationLevel Detailed",
+            "# Test a range of ports",
+            '$ports = @(40000..40003); foreach ($p in $ports) { Test-NetConnection -ComputerName <NodeName> -Port $p }'
+        )
+        return
+    }
     Write-Section "PORT REACHABILITY TEST"
     $targetNode = if ($NodeName) { $NodeName } else { $SchedulerNode }
     $portList = if ($Port) { @($Port) }
@@ -2101,6 +2157,16 @@ function Invoke-PortTest {
     Write-Host ("  Target Node: {0}" -f $targetNode) -ForegroundColor White
     Write-Host ("  Ports......: {0}" -f ($portList -join ', ')) -ForegroundColor White
     Test-HpcNodePorts -NodeName $targetNode -Ports $portList
+    if ($VerbosePreference -eq 'Continue') {
+        Write-Host ""
+        Write-Host "CLI tips (PowerShell):  PORT REACHABILITY TEST" -ForegroundColor Cyan
+        Write-CliTips @(
+            "# Test a single port on a node",
+            "Test-NetConnection -ComputerName <NodeName> -Port <Port> -InformationLevel Detailed",
+            "# Test a range of ports",
+            "$ports = @(40000..40003); foreach ($p in $ports) { Test-NetConnection -ComputerName <NodeName> -Port $p }"
+        )
+    }
 }
 
 function Show-InsightHelp {
@@ -2149,9 +2215,15 @@ function Show-InsightHelp {
     Write-Host "  .\\$Script:SelfName ClusterTopology" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName ClusterTopology headnode" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName AdvancedHealth -Verbose" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName ServicesStatus -CliTips   # tips for services only" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName SystemInfo -CliTips       # tips for system info only" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName ListModules                # list all run modes" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName ClusterMetadata -CliTips   # print tips only" -ForegroundColor White
-    Write-Host "  .\\$Script:SelfName HPCPackCommunicationTest -SchedulerNode headnode" -ForegroundColor White
-    Write-Host "  .\\$Script:SelfName HPCPackCommunicationTest -CliTips   # print just the commands" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName ServicesStatus -CliTips   # tips for services only" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName SystemInfo -CliTips       # tips for system info only" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName ListModules                # list all run modes" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName CommunicationTest -SchedulerNode headnode" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName CommunicationTest -CliTips   # print just the commands" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName MetricValueHistory -Verbose   # export last 7 days to MetricValueHistory.csv" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName MetricValueHistory -MetricStartDate '2025-08-01' -MetricEndDate '2025-08-14' -MetricOutputPath C:\\temp\\mvh.csv" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName NetworkFix -TestHpcNodePorts -NodeName IaaSCN104 -Port 40000" -ForegroundColor White
@@ -2340,7 +2412,7 @@ function Invoke-InsightRunMode {
     )
 
     switch ($RunMode) {
-        'ListRunModes' {
+    'ListRunModes' {
             if (-not $Script:CliTipsOnly) { Write-Header 'AVAILABLE RUN MODES' }
             Get-InsightRunModes | ForEach-Object {
                 if (-not $Script:CliTipsOnly) { Write-Host ("  {0,-16} {1} [{2}]" -f $_.Name, $_.Description, $_.Source) -ForegroundColor White }
@@ -2371,7 +2443,7 @@ function Invoke-InsightRunMode {
             Invoke-ClusterTopology
             Invoke-DiagnosticTests
             Invoke-NodeConfig
-            Invoke-HPCPackCommunicationTest
+            Invoke-CommunicationTest
             Invoke-AdvancedHealth
             return
         }
@@ -2393,10 +2465,10 @@ function Invoke-InsightRunMode {
             Invoke-CommandTest
             return
         }
-        'HPCPackCommunicationTest' {
+    'CommunicationTest' {
             Import-HpcModule -Quiet | Out-Null
-            if (-not $Script:CliTipsOnly) { Write-Header 'RUNNING: HPCPackCommunicationTest' }
-            Invoke-HPCPackCommunicationTest
+            if (-not $Script:CliTipsOnly) { Write-Header 'RUNNING: CommunicationTest' }
+            Invoke-CommunicationTest
             return
         }
         'NodeHistory' {
@@ -2413,15 +2485,24 @@ function Invoke-InsightRunMode {
             Invoke-NodeValidation
             return
         }
+        'ListModules' {
+            $cliTipModes = @(
+                'PortTest','NetworkFix','CommandTest','NodeValidation','NodeConfig','ClusterMetadata','NodeTemplates','JobHistory','JobDetails','ClusterMetrics','MetricValueHistory','ClusterTopology','ServicesStatus','DiagnosticTests','SystemInfo','AdvancedHealth','NodeHistory','CommunicationTest'
+            )
+            Write-Host "RUN MODES IMPLEMENTED:" -ForegroundColor Yellow
+            foreach ($m in $cliTipModes) { Write-Host "  $m" -ForegroundColor White }
+            return
+        }
         default {
             Import-HpcModule -Quiet | Out-Null
-    if ($RunMode -in @('NodeConfig','ClusterMetadata','NodeTemplates','JobHistory','ClusterMetrics','MetricValueHistory','ClusterTopology','ServicesStatus','DiagnosticTests','SystemInfo','AdvancedHealth','NodeHistory','HPCPackCommunicationTest')) {
+    if ($RunMode -in @('NodeConfig','ClusterMetadata','NodeTemplates','JobHistory','JobDetails','ClusterMetrics','MetricValueHistory','ClusterTopology','ServicesStatus','DiagnosticTests','SystemInfo','AdvancedHealth','NodeHistory','CommunicationTest')) {
                 if (-not $Script:CliTipsOnly) { Write-Header ("RUNNING: {0}" -f $RunMode) }
                 switch ($RunMode) {
                     'NodeConfig'       { Invoke-NodeConfig }
                     'ClusterMetadata'  { Invoke-ClusterMetadata }
                     'NodeTemplates'    { Invoke-NodeTemplates }
                     'JobHistory'       { Invoke-JobHistory }
+                    'JobDetails'       { Invoke-JobDetails -JobId $JobId }
                     'ClusterMetrics'   { Invoke-ClusterMetrics }
                     'MetricValueHistory' {
                         $mvhArgs2 = @{}
@@ -2436,7 +2517,7 @@ function Invoke-InsightRunMode {
                     'SystemInfo'       { Invoke-SystemInfo }
                     'AdvancedHealth'   { Invoke-AdvancedHealth }
             'NodeHistory'      { $tn = if ($NodeName) { $NodeName } else { $SchedulerNode }; Invoke-NodeHistory -NodeName $tn -DaysBack $DaysBack }
-            'HPCPackCommunicationTest' { Invoke-HPCPackCommunicationTest }
+            'CommunicationTest' { Invoke-CommunicationTest }
                 }
                 return
             }
