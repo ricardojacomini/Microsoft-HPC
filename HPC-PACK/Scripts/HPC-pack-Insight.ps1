@@ -3,10 +3,11 @@
 
 <#
 .SYNOPSIS
-    Self-contained HPC Pack diagnostics and troubleshooting tool.
+    Self-contained Microsoft HPC Pack diagnostics and troubleshooting tool with modular run modes.
 
-    PowerShell ISE: All run modes are supported.
-    PowerShell Console (PS 5.1): CommunicationTest may be partially functional depending on environment (run as Administrator, Microsoft.Hpc module available, valid HPCPackCommunication certificate).
+    - Use -CliTips to print only CLI guidance without executing modules; use -Verbose for tips plus detailed sections.
+    - CommunicationTest validates the HPCPackCommunication certificate (LocalMachine\My), with fallback discovery in Trusted Root (LocalMachine\Root) for visibility.
+    - Designed for PS 5.1; run as Administrator. Requires Microsoft.Hpc module for cluster queries.
 
 .DESCRIPTION
     A single PowerShell script that runs a comprehensive set of cluster/node checks
@@ -16,9 +17,83 @@
 .PARAMETER SchedulerNode
     HPC head node name or IP. Defaults to 'headnode'.
 
-
 .PARAMETER RunMode
+    One of the following run modes (case-insensitive):
+    - All                       : Run all checks in sequence.
+    - NetworkFix                : Quick network checks and optional repairs.
+    - PortTest                  : Test TCP port reachability (single or range).
+    - CommandTest               : Basic Microsoft.Hpc cmdlets smoke test.
+    - NodeValidation            : Summarize node states and health.
+    - NodeConfig                : Local node HPC/MSMPI configuration snapshot.
+    - ClusterMetadata           : Cluster overview and key properties.
+    - NodeTemplates             : List node templates and groups.
+    - JobHistory                : Recent jobs (supports -JobId and -NodeName/-DaysBack).
+    - ClusterMetrics            : List metrics and current values.
+    - MetricValueHistory        : Export historical metric values; honors -MetricStartDate, -MetricEndDate, -MetricOutputPath.
+    - ClusterTopology           : Role counts and basic reachability view.
+    - ServicesStatus            : HPC/MPI/SQL service states summary.
+    - DiagnosticTests           : Built-in HPC Pack diagnostic tests.
+    - SystemInfo                : OS and hardware basics.
+    - AdvancedHealth            : Additional health probes.
+    - NodeHistory               : Node state history (use with -NodeName and -DaysBack).
+    - CommunicationTest         : Certificate and endpoint checks for HPC Pack communication.
+    - ListModules               : Print available run modes.
+
+.PARAMETER FixNetworkIssues
+    When set, performs optional network repair steps in NetworkFix mode (winsock reset,
+    DNS flush, and basic firewall openings).
+
+.PARAMETER EnableMpiTesting
+    Reserved for future MPI verification steps.
+
+.PARAMETER TimeoutSeconds
+    General timeout (in seconds) for selected operations. Reserved for future use.
+
+.PARAMETER ShowHelp
+    Show help and available run modes.
+
+.PARAMETER ExportToFile
+    When set, exports all console output to a transcript file (default: report.log).
+
+.PARAMETER ReportFile
+    Optional path for the transcript output. Defaults to 'report.log' when -ExportToFile is used.
+
+.PARAMETER JobId
+    When provided, retrieves detailed information for the specific job using Get-HpcJobDetails.
+    Can be used alone (prints only job details) or alongside other RunModes (prints job details after the selected mode).
+
+.PARAMETER NodeName
+    When used with RunMode JobHistory, also prints node state history for the specified node.
+
+.PARAMETER DaysBack
+    Number of days back to include for node history (used with -NodeName). Default is 7.
+
+.PARAMETER CliTips
+    Print only the CLI tips (PowerShell) for the selected RunMode(s). Suppresses all other
+    output. Use together with -RunMode to focus on a specific section, or with -RunMode All
+    to list tips from all sections.
+
+.EXAMPLE
+    .\HPC-pack-Insight.ps1 -RunMode All -SchedulerNode headnode
+
+.EXAMPLE
+    .\HPC-pack-Insight.ps1 -RunMode ClusterTopology -SchedulerNode headnode
+
+.LINK
+    Microsoft HPC Pack PowerShell command reference
+    https://learn.microsoft.com/en-us/powershell/high-performance-computing/microsoft-hpc-pack-command-reference?view=hpc19-ps
+    https://learn.microsoft.com/en-us/powershell/high-performance-computing/using-service-log-files-for-hpc-pack?view=hpc19-ps
+
+.NOTES
+    Author         : Ricardo S Jacomini
+    Team           : Azure HPC + AI  
+    Email          : ricardo.jacomini@microsoft.com
+    Version        : 1.6.0
+    Last Modified  : 2025-08-15
+    Script Name    : HPC-pack-Insight.ps1
+    Tags           : Diagnostics, HPCPack
 #>
+
 
 [CmdletBinding()]
 param(
@@ -1880,7 +1955,9 @@ function Invoke-CommunicationTest {
         Write-CliHeader -Name 'Communication - Certificate Test'
         Write-CliTips @(
             '# Discover HPCPackCommunication certificate on Windows',
-            'Get-ChildItem Cert:\\LocalMachine\\My | Where-Object { $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date) } | Select-Object -First 1'
+            'Get-ChildItem Cert:\\LocalMachine\\My | Where-Object { $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date) } | Select-Object -First 1',
+            '# Fallback (visibility only): search Trusted Root if not present in My store',
+            'Get-ChildItem Cert:\\LocalMachine\\Root | Where-Object { $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date) } | Select-Object -First 1'
         )
         Write-CliHeader -Name 'COMMUNICATION CERT & ENDPOINT TEST'
         Write-Host "Windows (compute node) compare serial and thumbprint" -ForegroundColor Green
@@ -1888,13 +1965,19 @@ function Invoke-CommunicationTest {
         Write-CliTips @(
         '#    Discover HPCPackCommunication Certificate',
         'Write-Host "`n🔍 Searching for HPCPackCommunication certificate..." -ForegroundColor Cyan',
-        '$cert = Get-ChildItem Cert:\\LocalMachine\\My | Where-Object {',
+    '$cert = Get-ChildItem Cert:\\LocalMachine\\My | Where-Object {',
         '    $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)',
         '} | Select-Object -First 1',
-        'if (-not $cert) {',
-        '    Write-Warning "❌ Certificate not found or expired."',
-        '    return',
-        '}',
+    'if (-not $cert) {',
+    '    Write-Host "🔎 Not found in LocalMachine\\My; checking Trusted Root (visibility only)..." -ForegroundColor DarkYellow',
+    '    $cert = Get-ChildItem Cert:\\LocalMachine\\Root | Where-Object {',
+    '        $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)',
+    '    } | Select-Object -First 1',
+    '}',
+    'if (-not $cert) {',
+    '    Write-Warning "❌ Certificate not found or expired in My or Root."',
+    '    return',
+    '}',
         'Write-Host "`n✅ Found a Local HPCPackCommunication certificate:" -ForegroundColor Green',
         '$cert | Format-List Subject, Thumbprint, NotAfter',
         '',
@@ -1974,7 +2057,14 @@ function Invoke-CommunicationTest {
         } | Select-Object -First 1
 
         if (-not $cert) {
-            Write-Warning "❌ Certificate not found or expired."
+            Write-Host "🔎 Not found in LocalMachine\\My; checking Trusted Root (visibility only)..." -ForegroundColor DarkYellow
+            $cert = Get-ChildItem Cert:\LocalMachine\Root | Where-Object {
+                $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)
+            } | Select-Object -First 1
+        }
+
+        if (-not $cert) {
+            Write-Warning "❌ Certificate not found or expired in My or Root."
             return
         }
 
