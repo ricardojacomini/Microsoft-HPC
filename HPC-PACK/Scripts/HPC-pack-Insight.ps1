@@ -1882,13 +1882,10 @@ function Invoke-CommunicationTest {
             '# Discover HPCPackCommunication certificate on Windows',
             'Get-ChildItem Cert:\\LocalMachine\\My | Where-Object { $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date) } | Select-Object -First 1'
         )
-        return
-    }
-    Write-Section "COMMUNICATION CERT & ENDPOINT TEST"
-
-    # Emit CLI tips variant when requested
-    Write-CliTips @(
-        '# Windows (compute node) compare serial and thumbprint',
+        Write-CliHeader -Name 'COMMUNICATION CERT & ENDPOINT TEST'
+        Write-Host "Windows (compute node) compare serial and thumbprint" -ForegroundColor Green
+        Write-Host " "
+        Write-CliTips @(
         '#    Discover HPCPackCommunication Certificate',
         'Write-Host "`n🔍 Searching for HPCPackCommunication certificate..." -ForegroundColor Cyan',
         '$cert = Get-ChildItem Cert:\\LocalMachine\\My | Where-Object {',
@@ -1946,16 +1943,25 @@ function Invoke-CommunicationTest {
         '    if ($_.Exception.InnerException) {',
         '        Write-Host "🔎 Inner Exception: $($_.Exception.InnerException.Message)" -ForegroundColor DarkYellow',
     '    }',
-    '}',
-    '',
-    '# Linux (compute node) - compare serial and thumbprint',
+    '}'
+    )
+        Write-Host "Linux (compute node) - compare serial and thumbprint" -ForegroundColor Green
+        Write-Host " "
+        Write-CliTips @(
     '#    tail LinuxNodeAgent log for cert activity',
     'tail -f /var/log/azure/Microsoft.HpcPack.LinuxNodeAgent2016U1/extension.log',
     '#    show nodemanager certificate details + fingerprint',
     'openssl x509 -in /opt/hpcnodemanager/certs/nodemanager.crt -noout -text -fingerprint -sha1',
     '#    test headnode endpoint with node cert/key',
     'curl -vk https://HEADNODE:443/HpcNaming/api/fabric/resolve/singleton/MonitoringStatefulService --cert /opt/hpcnodemanager/certs/nodemanager.crt --key /opt/hpcnodemanager/certs/nodemanager.key'
-    )
+    
+
+            )
+        return
+    }
+
+    # Emit CLI tips variant when requested
+
 
     if ($Script:CliTipsOnly) { return }
 
