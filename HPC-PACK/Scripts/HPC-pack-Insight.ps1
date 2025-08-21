@@ -20,8 +20,7 @@
 .PARAMETER RunMode
 #>
 
-
-
+[CmdletBinding()]
 param(
     [string]$RunMode = "All",
     [string]$SchedulerNode = "headnode",
@@ -1607,20 +1606,38 @@ function Invoke-AdvancedHealth {
     Write-Section "ADVANCED HEALTH"
     try {
         # Concise default summary
+        $somethingPrinted = $false
         $cpu = Get-Counter '\\Processor(_Total)\\% Processor Time' -SampleInterval 1 -MaxSamples 1 -ErrorAction SilentlyContinue
         $mem = Get-Counter '\\Memory\\Available MBytes' -SampleInterval 1 -MaxSamples 1 -ErrorAction SilentlyContinue
         if ($cpu) {
             $cpuAvg = ($cpu.CounterSamples | Measure-Object -Property CookedValue -Average).Average
-            if ($null -ne $cpuAvg) { Write-Host ("  CPU Usage: {0}%" -f ([math]::Round($cpuAvg,2))) -ForegroundColor White }
-            else { Write-Host "  CPU usage sample captured" -ForegroundColor White }
+            if ($null -ne $cpuAvg) { Write-Host ("  CPU Usage: {0}%" -f ([math]::Round($cpuAvg,2))) -ForegroundColor White; $somethingPrinted = $true }
+            else { Write-Host "  CPU usage sample captured" -ForegroundColor White; $somethingPrinted = $true }
         }
         if ($mem) {
             $memMB = [int]$mem.CounterSamples[0].CookedValue
             Write-Host ("  Available MB: {0}" -f $memMB) -ForegroundColor White
+            $somethingPrinted = $true
+        }
+
+        # Fallback: if counters aren't available, print guidance and a quick connectivity check
+        if (-not $somethingPrinted) {
+            Write-Host "  ⚠️  No performance counters returned. Try running PowerShell as Administrator and ensure the 'Performance Logs & Alerts' service is running." -ForegroundColor Yellow
+            try {
+                $gw4 = (Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1).NextHop
+                $gw6 = (Get-NetRoute -AddressFamily IPv6 -DestinationPrefix '::/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1).NextHop
+                $gw = if ($gw4) { $gw4 } elseif ($gw6) { $gw6 } else { $null }
+                if ($gw) {
+                    $gwOk = Test-Connection -ComputerName $gw -Count 1 -Quiet -ErrorAction SilentlyContinue
+                    $gwStatus = if ($gwOk) { '[OK]' } else { '[FAIL]' }
+                    Write-Host ("  Default Gateway: {0} {1}" -f $gw, $gwStatus) -ForegroundColor White
+                }
+                try { Resolve-DnsName microsoft.com -ErrorAction Stop -Verbose:$false | Out-Null; Write-Host "  DNS microsoft.com: [OK]" -ForegroundColor White } catch { Write-Host "  DNS microsoft.com: [FAIL]" -ForegroundColor White }
+            } catch { }
         }
 
         # Verbose diagnostics
-        if ($VerbosePreference -eq 'Continue') {
+    if ($VerbosePreference -eq 'Continue' -or ($PSBoundParameters.ContainsKey('Verbose'))) {
             Write-Host ""; Write-Host "Network Connectivity Tests:" -ForegroundColor Green
             $networkTests = @()
             $haveHpc = Import-HpcModule -Quiet
@@ -1692,10 +1709,11 @@ function Invoke-AdvancedHealth {
                 }
             } catch { Write-Host "   Performance counters not available" -ForegroundColor Yellow }
 
-            Write-Host ""; Write-Host "HPC Specific Health Checks:" -ForegroundColor Green
-            # Database connectivity (best effort)
+
             try {
                 if ($haveHpc) {
+                    Write-Host ""; Write-Host "HPC Specific Health Checks:" -ForegroundColor Green
+                    # Database connectivity (best effort)
                     # Some environments don't support -Name param set; list and filter instead
                     $dbProps = Get-HpcClusterProperty -Scheduler $SchedulerNode -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)Database' }
                     if ($dbProps -and $dbProps.Count -gt 0) { Write-Host "   Database Connectivity: [OK] Property present" -ForegroundColor White }
