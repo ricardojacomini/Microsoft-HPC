@@ -99,6 +99,10 @@
 param(
     [string]$RunMode = "All",
     [string]$SchedulerNode = "headnode",
+    # Optional client certificate inputs for CommunicationTest when running off a compute node
+    [string]$ClientCertThumbprint,
+    [string]$ClientCertPfxPath,
+    [securestring]$ClientCertPfxPassword,
     [switch]$FixNetworkIssues,
     [switch]$TestHpcNodePorts,
     [int[]]$Ports,
@@ -122,12 +126,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Script filename for dynamic help/usage strings
-try {
-    if ($PSCommandPath) { $Script:SelfName = Split-Path -Path $PSCommandPath -Leaf }
-    elseif ($MyInvocation -and $MyInvocation.MyCommand -and $MyInvocation.MyCommand.Name) { $Script:SelfName = $MyInvocation.MyCommand.Name }
-    else { $Script:SelfName = 'script.ps1' }
-} catch { $Script:SelfName = 'script.ps1' }
 # Script filename for dynamic help/usage strings
 try {
     if ($PSCommandPath) { $Script:SelfName = Split-Path -Path $PSCommandPath -Leaf }
@@ -1963,14 +1961,15 @@ function Invoke-CommunicationTest {
         Write-Host "Windows (compute node) compare serial and thumbprint" -ForegroundColor Green
         Write-Host " "
         Write-CliTips @(
-        '#    Discover HPCPackCommunication Certificate',
-        'Write-Host "`n🔍 Searching for HPCPackCommunication certificate..." -ForegroundColor Cyan',
-    '$cert = Get-ChildItem Cert:\\LocalMachine\\My | Where-Object {',
-        '    $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)',
-        '} | Select-Object -First 1',
+    '#    Discover HPCPackCommunication Certificate',
+   '# Load certificate by thumbprint',
+    'Write-Host "`n🔍 Searching for HPCPackCommunication certificate..." -ForegroundColor Cyan',
+    '$cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {',
+    '    $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)',
+    '} | Select-Object -First 1',
     'if (-not $cert) {',
-    '    Write-Host "🔎 Not found in LocalMachine\\My; checking Trusted Root (visibility only)..." -ForegroundColor DarkYellow',
-    '    $cert = Get-ChildItem Cert:\\LocalMachine\\Root | Where-Object {',
+    '    Write-Host "🔎 Not found in LocalMachine\My; checking LocalMachine\Root (visibility only)..." -ForegroundColor DarkYellow',
+    '    $cert = Get-ChildItem Cert:\LocalMachine\Root | Where-Object {',
     '        $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)',
     '    } | Select-Object -First 1',
     '}',
@@ -1978,54 +1977,66 @@ function Invoke-CommunicationTest {
     '    Write-Warning "❌ Certificate not found or expired in My or Root."',
     '    return',
     '}',
-        'Write-Host "`n✅ Found a Local HPCPackCommunication certificate:" -ForegroundColor Green',
-        '$cert | Format-List Subject, Thumbprint, NotAfter',
-        '',
-        '#    Force TLS 1.2',
-        '[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12',
-        '',
-        '#    Override SSL Validation (Safe for PowerShell 5.1)',
-        'Write-Host "`n⚠️ Overriding SSL validation for testing..." -ForegroundColor Yellow',
-        '',
-        'if (-not ("TrustAllCertsPolicy" -as [type])) {',
-        '    Add-Type @"',
-        'using System;',
-        'using System.Net;',
-        'using System.Net.Security;',
-        'using System.Security.Cryptography.X509Certificates;',
-        '',
-        'public static class TrustAllCertsPolicy {',
-        '    public static bool IgnoreCertificateValidationCallback(',
-        '        object sender,',
-        '        X509Certificate certificate,',
-        '        X509Chain chain,',
-        '        SslPolicyErrors sslPolicyErrors) {',
-        '        return true;',
-        '    }',
-        '}',
-        '"@',
-        '}',
-        '',
-        '#    Assign the static method directly (no .new(), no script block)',
-        '[System.Net.ServicePointManager]::ServerCertificateValidationCallback = `',
-        '    [TrustAllCertsPolicy]::IgnoreCertificateValidationCallback',
-        '',
-        '',
-        '#    Define Target URI',
-        '$uri = "https://HEADNODE:443/HpcNaming/api/fabric/resolve/singleton/MonitoringStatefulService"',
-        'Write-Host "`n🌐 Testing endpoint: $uri" -ForegroundColor Cyan',
-        '',
-        '#    test headnode endpoint with node cert/key',
-        'try {',
-        '    $cert2 = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($cert)',
-        '    $response = Invoke-WebRequest -Uri $uri -Certificate $cert2 -UseBasicParsing',
-        '    Write-Host "✅ Request succeeded. Status code: $($response.StatusCode)" -ForegroundColor Green',
-        '    $response.Content',
-        '} catch {',
-        '    Write-Error "❌ Request failed: $($_.Exception.Message)"',
-        '    if ($_.Exception.InnerException) {',
-        '        Write-Host "🔎 Inner Exception: $($_.Exception.InnerException.Message)" -ForegroundColor DarkYellow',
+    'Write-Host "`n✅ Found a Local HPCPackCommunication certificate:" -ForegroundColor Green',
+    '$cert = Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -eq $thumbprint }',
+    'if (-not $cert) { Write-Error "❌ Certificate with thumbprint $thumbprint not found."; return }',
+    'Write-Host "`n✅ Certificate loaded:" -ForegroundColor Green',
+    '$cert | Format-List Subject, Thumbprint, HasPrivateKey, NotAfter',
+    'if (-not $cert.HasPrivateKey) { Write-Error "❌ Certificate does not have a private key. Cannot use for client authentication."; return }',
+    '',
+    '# Enforce TLS 1.2',
+    '[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12',
+    '',
+    '# Safe SSL override using .NET delegate (avoids runspace errors)',
+    'if (-not ("SSLBypass" -as [type])) {',
+    '    Add-Type @"',
+    '    using System;',
+    '    using System.Net;',
+    '    using System.Net.Security;',
+    '    using System.Security.Cryptography.X509Certificates;',
+    '    public static class SSLBypass {',
+    '        public static void Enable() {',
+    '            ServicePointManager.ServerCertificateValidationCallback =',
+    '                new RemoteCertificateValidationCallback(',
+    '                    delegate (object sender, X509Certificate cert, X509Chain chain, SslPolicyErrors sslPolicyErrors) {',
+    '                        return true;',
+    '                    }',
+    '                );',
+    '        }',
+    '        public static void Reset() {',
+    '            ServicePointManager.ServerCertificateValidationCallback = null;',
+    '        }',
     '    }',
+    '"@',
+    '}',
+    '',
+    '# Enable SSL bypass (for testing only)',
+    '[SSLBypass]::Enable()',
+    '',
+    '#    Resolve headnode name',
+    '$hn = $env:CCP_SCHEDULER; if (-not $hn -or -not $hn.Trim()) { $hn = "headnode" }  # set your headnode here if env var is unset',
+    '#    Optional quick reachability checks',
+    'Test-Connection $hn -Count 1',
+    'Test-NetConnection -ComputerName $hn -Port 443 -InformationLevel Detailed',
+    '',
+    '# Define target URI',
+    '$ub = [System.UriBuilder]::new(''https'',$hn,443,''/HpcNaming/api/fabric/resolve/singleton/MonitoringStatefulService'')',
+    '$uri = $ub.Uri.AbsoluteUri',
+    'Write-Host "`n🌐 Testing endpoint: $uri" -ForegroundColor Cyan',
+    '',
+    '# Make the request',
+    'try {',
+    '    $response = Invoke-WebRequest -Uri $uri -Certificate $cert -UseBasicParsing',
+    '    Write-Host "✅ Request succeeded. Status code: $($response.StatusCode)" -ForegroundColor Green',
+    '    $response.Content',
+    '} catch {',
+    '    Write-Error "❌ Request failed: $($_.Exception.Message)"',
+    '    if ($_.Exception.InnerException) {',
+    '        Write-Host "🔎 Inner Exception: $($_.Exception.InnerException.Message)" -ForegroundColor DarkYellow',
+    '    }',
+    '} finally {',
+    '    # Reset SSL override',
+    '    [SSLBypass]::Reset()',
     '}'
     )
         Write-Host "Linux (compute node) - compare serial and thumbprint" -ForegroundColor Green
@@ -2037,9 +2048,7 @@ function Invoke-CommunicationTest {
     'openssl x509 -in /opt/hpcnodemanager/certs/nodemanager.crt -noout -text -fingerprint -sha1',
     '#    test headnode endpoint with node cert/key',
     'curl -vk https://HEADNODE:443/HpcNaming/api/fabric/resolve/singleton/MonitoringStatefulService --cert /opt/hpcnodemanager/certs/nodemanager.crt --key /opt/hpcnodemanager/certs/nodemanager.key'
-    
-
-            )
+    )
         return
     }
 
@@ -2049,18 +2058,43 @@ function Invoke-CommunicationTest {
     if ($Script:CliTipsOnly) { return }
 
     try {
-        # Windows (compute node) Discover HPCPackCommunication Certificate
+    # Windows (compute node) Discover HPCPackCommunication Certificate (or honor overrides)
         Write-Host "`n🔍 Searching for HPCPackCommunication certificate..." -ForegroundColor Cyan
 
-        $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
-            $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)
-        } | Select-Object -First 1
-
+        $cert = $null
+    # 1) Explicit PFX provided
+    if ($ClientCertPfxPath) {
+            try {
+                $pfxPwd = $null
+                if ($ClientCertPfxPassword) { $pfxPwd = $ClientCertPfxPassword }
+                $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($ClientCertPfxPath, $pfxPwd, 'Exportable,MachineKeySet')
+                Write-Host "✅ Loaded client certificate from PFX path." -ForegroundColor Green
+            } catch {
+                Write-Warning ("❌ Failed to load PFX '{0}': {1}" -f $ClientCertPfxPath, $_.Exception.Message)
+            }
+        }
+    # 2) Thumbprint provided (strict: require in LocalMachine\My and with private key)
+    if (-not $cert -and $ClientCertThumbprint) {
+            $tp = ($ClientCertThumbprint -replace '\s','').ToUpperInvariant()
+            try {
+        $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -eq $tp -and $_.NotAfter -gt (Get-Date) } | Select-Object -First 1
+        } catch { Write-Warning ("❌ Error searching for thumbprint in My: {0}" -f $_.Exception.Message) }
+        if (-not $cert) { Write-Error ("❌ Certificate with thumbprint {0} not found in LocalMachine\\My." -f $tp); return }
+        if (-not $cert.HasPrivateKey) { Write-Error ("❌ Certificate {0} does not have a private key. Cannot use for client authentication." -f $tp); return }
+        Write-Host "✅ Using client certificate from LocalMachine\\My by thumbprint." -ForegroundColor Green
+        }
+        # 3) Auto-discover by subject when no override provided
         if (-not $cert) {
-            Write-Host "🔎 Not found in LocalMachine\\My; checking Trusted Root (visibility only)..." -ForegroundColor DarkYellow
-            $cert = Get-ChildItem Cert:\LocalMachine\Root | Where-Object {
+            $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
                 $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)
             } | Select-Object -First 1
+
+            if (-not $cert) {
+                Write-Host "🔎 Not found in LocalMachine\\My; checking Trusted Root (visibility only)..." -ForegroundColor DarkYellow
+                $cert = Get-ChildItem Cert:\LocalMachine\Root | Where-Object {
+                    $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)
+                } | Select-Object -First 1
+            }
         }
 
         if (-not $cert) {
@@ -2068,63 +2102,107 @@ function Invoke-CommunicationTest {
             return
         }
 
-        Write-Host "`n✅ Found a Local HPCPackCommunication certificate:" -ForegroundColor Green
-        $cert | Format-List Subject, Thumbprint, NotAfter
+        if ($cert.HasPrivateKey) {
+            Write-Host "`n✅ Using client certificate (private key present):" -ForegroundColor Green
+        } else {
+            Write-Host "`n⚠️  Certificate present but private key missing; proceeding without client certificate." -ForegroundColor Yellow
+        }
+        $cert | Format-List Subject, Thumbprint, NotAfter, HasPrivateKey
 
 
-        # Force TLS 1.2
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    # Prefer TLS 1.2; allow fallback to TLS 1.1/1.0 if the server is older
+    $proto = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+    [Net.ServicePointManager]::SecurityProtocol = $proto
         # endregion
 
-        # Override SSL Validation (Safe for PowerShell 5.1)
-        Write-Host "`n⚠️ Overriding SSL validation for testing..." -ForegroundColor Yellow
-
-        if (-not ("TrustAllCertsPolicy" -as [type])) {
-            Add-Type @"
-using System;
-using System.Net;
-using System.Net.Security;
-using System.Security.Cryptography.X509Certificates;
-
-public static class TrustAllCertsPolicy {
-    public static bool IgnoreCertificateValidationCallback(
-        object sender,
-        X509Certificate certificate,
-        X509Chain chain,
-        SslPolicyErrors sslPolicyErrors) {
-        return true;
-    }
-}
-"@
+    # Override SSL Validation (Safe for PowerShell 5.1) using a static helper class to avoid runspace issues
+    Write-Host "`n⚠️ Overriding SSL validation for testing..." -ForegroundColor Yellow
+    if (-not ('SSLBypass' -as [type])) {
+        Add-Type @"
+    using System;
+    using System.Net;
+    using System.Net.Security;
+    using System.Security.Cryptography.X509Certificates;
+    public static class SSLBypass {
+        public static void Enable() {
+            ServicePointManager.ServerCertificateValidationCallback =
+                new RemoteCertificateValidationCallback(
+                    delegate (object sender, X509Certificate cert, X509Chain chain, SslPolicyErrors sslPolicyErrors) {
+                        return true;
+                    }
+                );
         }
+        public static void Reset() {
+            ServicePointManager.ServerCertificateValidationCallback = null;
+        }
+    }
+"@
+    }
+    [SSLBypass]::Enable()
 
-        # Assign the static method directly (no .new(), no script block)
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = `
-            [TrustAllCertsPolicy]::IgnoreCertificateValidationCallback
 
+    # Define Target URI using the provided SchedulerNode or local machine as fallback (hardened)
+    $hn = if ($SchedulerNode -and -not [string]::IsNullOrWhiteSpace($SchedulerNode)) { $SchedulerNode } elseif ($env:CCP_SCHEDULER) { $env:CCP_SCHEDULER } else { $env:COMPUTERNAME }
+    $hn = ($hn | ForEach-Object { $_.ToString() }).Trim()
+    if ([string]::IsNullOrWhiteSpace($hn)) {
+        Write-Error "Headnode name could not be resolved. Provide -SchedulerNode or set CCP_SCHEDULER."
+        return
+    }
+    Write-Host ("Resolved headnode: {0}" -f $hn) -ForegroundColor DarkGray
 
-        # Define Target URI
-        $uri = "https://HEADNODE:443/HpcNaming/api/fabric/resolve/singleton/MonitoringStatefulService"
-        Write-Host "`n🌐 Testing endpoint: $uri" -ForegroundColor Cyan
+    # Optional quick reachability checks (shown only with -Verbose)
+    if ($VerbosePreference -eq 'Continue') {
+        Write-Verbose "Running quick reachability checks..."
+        try {
+            Test-Connection -ComputerName $hn -Count 1 | Out-Host
+        } catch {
+            Write-Verbose ("Test-Connection failed: {0}" -f $_.Exception.Message)
+        }
+        try {
+            Test-NetConnection -ComputerName $hn -Port 443 -InformationLevel Detailed | Out-Host
+        } catch {
+            Write-Verbose ("Test-NetConnection failed: {0}" -f $_.Exception.Message)
+        }
+    }
+    try {
+        $ub = [System.UriBuilder]::new('https',$hn,443,'/HpcNaming/api/fabric/resolve/singleton/MonitoringStatefulService')
+        $uri = $ub.Uri.AbsoluteUri
+    } catch {
+        Write-Error ("Failed to build URI for headnode '{0}': {1}" -f $hn, $_.Exception.Message)
+        return
+    }
+    Write-Host "`n🌐 Testing endpoint: $uri" -ForegroundColor Cyan
+    Write-Host "   Tip: If TLS fails, try the scheduler FQDN and ensure it's in the certificate SAN: e.g., headnode.contoso.local" -ForegroundColor DarkGray
         # endregion
 
         # Invoke Request
         try {
-            $cert2 = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($cert)
-            $response = Invoke-WebRequest -Uri $uri -Certificate $cert2 -UseBasicParsing
+            # Only use a client certificate if it has a private key (i.e., from LocalMachine\My)
+            $certToUse = $null
+            if ($cert -and $cert.HasPrivateKey) { $certToUse = $cert } else { Write-Host "⚠️  Found certificate without private key (likely from Trusted Root). Proceeding without client certificate." -ForegroundColor Yellow }
+            if ($certToUse) {
+                $response = Invoke-WebRequest -Uri $uri -Certificate $certToUse -UseBasicParsing
+            } else {
+                $response = Invoke-WebRequest -Uri $uri -UseBasicParsing
+            }
             Write-Host "✅ Request succeeded. Status code: $($response.StatusCode)" -ForegroundColor Green
             $response.Content
         } catch {
             Write-Error "❌ Request failed: $($_.Exception.Message)"
             if ($_.Exception.InnerException) {
                 Write-Host "🔎 Inner Exception: $($_.Exception.InnerException.Message)" -ForegroundColor DarkYellow
+                if ($_.Exception.InnerException.Message -match 'handshake|client certificate|authentication') {
+                    Write-Host "💡 Likely mutual TLS required by headnode. Run from a compute node that has the HPCPackCommunication client cert, or provide -ClientCertThumbprint or -ClientCertPfxPath." -ForegroundColor Yellow
+                }
             }
+        } finally {
+            # Reset callback after testing
+            [SSLBypass]::Reset()
         }
     } catch {
         Write-Error $_
     }
 }
-
 function Invoke-JobDetails {
     param([int]$JobId)
     if ($Script:CliTipsOnly) {
@@ -2133,11 +2211,11 @@ function Invoke-JobDetails {
             '# Print details for a specific job using HPC Pack cmdlet',
             'Get-HpcJobDetails -JobId <N>',
             '# Example:',
-            'Get-HpcJobDetails -JobId 12345'
-            "# Get job object",
-            "Get-HpcJob -Id $JobId -Scheduler $SchedulerNode",
-            "# List tasks for the job (table)",
-            "Get-HpcTask -JobId $JobId -Scheduler $SchedulerNode | Format-Table Id,Name,State,ExitCode -Auto"
+            'Get-HpcJobDetails -JobId 12345',
+            '# Get job object',
+            'Get-HpcJob -Id <JobId> -Scheduler <SchedulerNode>',
+            '# List tasks for the job (table)',
+            'Get-HpcTask -JobId <JobId> -Scheduler <SchedulerNode> | Format-Table Id,Name,State,ExitCode -Auto'
         )
         return
     }
@@ -2210,11 +2288,6 @@ function Get-HpcNodeHistory {
         Write-Warning ("❌ Could not retrieve node history for {0}: {1}" -f $NodeName, $_.Exception.Message)
         return $null
     }
-    $days = $DaysBack; if (-not $days -or $days -le 0) { $days = 7 }
-    Write-CliTips @(
-        "# Node state changes over the last N days",
-        "Get-HpcNodeStateHistory -Scheduler $SchedulerNode -Name <NodeName> -StartDate (Get-Date).AddDays(-$days) -EndDate (Get-Date)"
-    )
 }
 
 function Invoke-NodeHistory {
@@ -2337,7 +2410,10 @@ function Show-InsightHelp {
     Write-Host "  .\\$Script:SelfName SystemInfo -CliTips       # tips for system info only" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName ListModules                # list all run modes" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName CommunicationTest -SchedulerNode headnode" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName CommunicationTest -Verbose" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName CommunicationTest -CliTips   # print just the commands" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName CommunicationTest -SchedulerNode headnode -ClientCertThumbprint <THUMBPRINT>" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName CommunicationTest -SchedulerNode headnode -ClientCertPfxPath C:\\path\\nodecert.pfx -ClientCertPfxPassword (Read-Host -AsSecureString)" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName MetricValueHistory -Verbose   # export last 7 days to MetricValueHistory.csv" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName MetricValueHistory -MetricStartDate '2025-08-01' -MetricEndDate '2025-08-14' -MetricOutputPath C:\\temp\\mvh.csv" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName NetworkFix -TestHpcNodePorts -NodeName IaaSCN104 -Port 40000" -ForegroundColor White
@@ -2579,8 +2655,9 @@ function Invoke-InsightRunMode {
             Invoke-CommandTest
             return
         }
-    'CommunicationTest' {
+        'CommunicationTest' {
             Import-HpcModule -Quiet | Out-Null
+         
             if (-not $Script:CliTipsOnly) { Write-Header 'RUNNING: CommunicationTest' }
             Invoke-CommunicationTest
             return
