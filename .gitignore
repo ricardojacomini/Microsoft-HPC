@@ -6,6 +6,7 @@
 *.tmp
 temp-zone*.bicep
 *.json.bak
+.gitignore
 
 # Azure CLI cache
 .azure/
