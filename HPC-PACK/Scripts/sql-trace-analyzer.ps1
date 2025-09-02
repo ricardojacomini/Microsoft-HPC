@@ -31,6 +31,13 @@
 
 .NOTES
   Requires the SqlServer PowerShell module (Install-Module SqlServer). Runs on Windows PowerShell 5.1 or later.
+  
+  Author         : Ricardo S Jacomini
+  Team           : Azure HPC + AI  
+  Email          : ricardo.jacomini@microsoft.com
+  Version        : 0.1.0
+  Last Modified  : 2025-09-02
+  Script Name    : sql-trace-analyzer.ps1
 #>
 
 param(

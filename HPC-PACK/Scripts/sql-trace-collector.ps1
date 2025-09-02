@@ -35,6 +35,13 @@
   Requirements:
   - Access to the SQL instance in the connection string.
   - PowerShell permissions to install/import the SqlServer module if not present.
+  
+  Author         : Ricardo S Jacomini
+  Team           : Azure HPC + AI  
+  Email          : ricardo.jacomini@microsoft.com
+  Version        : 0.1.0
+  Last Modified  : 2025-09-02
+  Script Name    : sql-trace-collector.ps1
 #>
 
 param(
