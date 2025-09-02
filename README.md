@@ -282,5 +282,5 @@ Since you're already working with MPI, RDMA, and AMLFS:
 **🌟 Start with the version that matches your needs, and you'll have AMLFS running in minutes!**
 
 **Quick Navigation:**
-- **🟦 [Basic Version Documentation →](AMLFS/README-basic.md)**
+- **🟦 [Basic Version Documentation →](AMLFS/README.md)**
 - **🟩 [Managed Identity Version Documentation →](AMLFS/README-managed-identity.md)**
