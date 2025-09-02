@@ -17,6 +17,8 @@ temp-zone*.bicep
 # VS Code settings (optional - uncomment if needed)
 # .vscode/
 HPC-PACK/manual_deployment/
+HPC-PACK/.vscode/
+AMLFS/.github/
 Linux_node_agent_notes.txt
 .vscode/
 .github/
