@@ -19,3 +19,4 @@ temp-zone*.bicep
 HPC-PACK/manual_deployment/
 Linux_node_agent_notes.txt
 .vscode/
+.github/
