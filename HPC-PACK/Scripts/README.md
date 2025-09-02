@@ -1,6 +1,6 @@
 ## 📜 Disclaim
 
-This script is provided as-is for Microsoft HPC Pack administration. Review and test thoroughly before production use.
+This script is provided as-is for HPC-Pack administration. Review and test thoroughly before production use.
 
 ## HPC-pack-Insight quick usage
 

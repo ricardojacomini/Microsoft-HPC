@@ -1,4 +1,7 @@
-# HPC Pack Cluster Deployment Script
+# Microsoft HPC-Pack Cluster Deployment Script
+
+📜 Disclaim
+This script is provided as-is for HPC-Pack administration. Review and test thoroughly before production use.
 
 ## 📌 Overview
 

@@ -1,4 +1,7 @@
-# H Series VM with InfiniBand Deployment - Usage Examples
+# Microsoft Azure H Series VM with InfiniBand Deployment - Usage Examples
+
+📜 Disclaim
+This script is provided as-is for VM administration. Review and test thoroughly before production use.
 
 ## Overview
 The `deploy_h_series_ib_win2019_enhanced.ps1` script creates Azure H series VMs with InfiniBand/RDMA support on Windows Server 2019 without HPC Pack dependencies. The enhanced version includes cost optimization features, quota checking, and pricing comparisons.

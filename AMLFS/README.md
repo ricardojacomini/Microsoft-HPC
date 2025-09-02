@@ -1,5 +1,8 @@
 # Azure ML File System (AMLFS) Deployment
 
+📜 Disclaim
+This script is provided as-is for AMLFS administration. Review and test thoroughly before production use.
+
 This repository contains a clean, minimal Bicep template for deploying Azure ML File Systems without complex RBAC configurations.
 
 ## Files
