@@ -37,6 +37,7 @@
     - AdvancedHealth            : Additional health probes.
     - NodeHistory               : Node state history (use with -NodeName and -DaysBack).
     - CommunicationTest         : Certificate and endpoint checks for HPC Pack communication.
+    - SQLTrace                  : Quick SQL trace readiness (extract SQL instance) and guidance.
     - ListModules               : Print available run modes.
 
 .PARAMETER FixNetworkIssues
@@ -88,7 +89,7 @@
     Author         : Ricardo S Jacomini
     Team           : Azure HPC + AI  
     Email          : ricardo.jacomini@microsoft.com
-    Version        : 1.6.0
+    Version        : 0.7.0
     Last Modified  : 2025-08-15
     Script Name    : HPC-pack-Insight.ps1
     Tags           : Diagnostics, HPCPack
@@ -1084,7 +1085,76 @@ function Invoke-ClusterMetrics {
         Write-Host "  ⚠️  HPC module not available" -ForegroundColor Yellow
     }
 
+}
 
+# SQL trace readiness and guidance (top-level for dispatcher)
+function Invoke-SqlTrace {
+    if ($Script:CliTipsOnly) {
+        Write-CliHeader -Name 'SQL Trace'
+        Write-CliTips @(
+            '# Extract SQL instance from HPC registry',
+            "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\HPC\\Security').HAStorageDbConnectionString",
+            '# Run quick collector (creates HPC_QuickTrace.xel next to the script)',
+            '.\sql-trace-collector.ps1',
+            '# Analyze the trace (events/sec, p50/p95/p99, top apps)',
+            '.\sql-trace-analyzer.ps1'
+        )
+        return
+    }
+
+    Write-Section 'SQL TRACE READINESS'
+    try {
+        $regPath = 'HKLM:\SOFTWARE\Microsoft\HPC\Security'
+        $valName = 'HAStorageDbConnectionString'
+        $connectionString = (Get-ItemProperty -Path $regPath -ErrorAction Stop).$valName
+        if (-not $connectionString) {
+            Write-Host "  ❌ Connection string not found at $regPath ($valName)" -ForegroundColor Red
+            return
+        }
+        $serverName = $null
+        if ($connectionString -match 'Data Source=([^;]+)') { $serverName = $matches[1] }
+        if ($serverName) {
+            Write-Host ("  ✅ SQL Server instance: {0}" -f $serverName) -ForegroundColor Green
+        } else {
+            Write-Host '  ❌ Could not parse Data Source from connection string' -ForegroundColor Red
+        }
+
+        # Probe SQL edition and version (trust server certificate for quick diagnostics)
+        try {
+            $csb = New-Object System.Data.SqlClient.SqlConnectionStringBuilder $connectionString
+            $csb.TrustServerCertificate = $true
+            $trustedConnectionString = $csb.ConnectionString
+
+            $query = "SELECT SERVERPROPERTY('Edition') AS Edition, SERVERPROPERTY('ProductVersion') AS Version"
+            $connection = New-Object System.Data.SqlClient.SqlConnection $trustedConnectionString
+            $command = $connection.CreateCommand()
+            $command.CommandText = $query
+
+            $connection.Open()
+            $reader = $command.ExecuteReader()
+            if ($reader.Read()) {
+                Write-Host ("  🧠 Edition: {0}" -f $reader['Edition']) -ForegroundColor White
+                Write-Host ("  📦 Version: {0}" -f $reader['Version']) -ForegroundColor White
+            }
+            $reader.Close()
+            $connection.Close()
+        } catch {
+            Write-Host ("  ⚠️  SQL query failed: {0}" -f $_) -ForegroundColor Yellow
+        }
+
+        Write-Host ''
+        Write-Host 'Next steps for detailed SQL trace:' -ForegroundColor Yellow
+        Write-Host '  1) Run the collector to create HPC_QuickTrace.xel:' -ForegroundColor White
+        Write-Host '     .\sql-trace-collector.ps1' -ForegroundColor Cyan
+        Write-Host '  2) Analyze results with percentiles and throughput:' -ForegroundColor White
+        if ($serverName) {
+            Write-Host ("     .\sql-trace-analyzer.ps1 -ServerInstance '{0}' -XeFile .\HPC_QuickTrace.xel" -f $serverName) -ForegroundColor Cyan
+        } else {
+            Write-Host "     .\sql-trace-analyzer.ps1 -ServerInstance <server> -XeFile .\\HPC_QuickTrace.xel" -ForegroundColor Cyan
+        }
+    } catch {
+        Write-Host ("  ⚠️  SQL trace readiness failed: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+    }
 }
 
 function Invoke-MetricValueHistory {
@@ -1942,6 +2012,7 @@ function Get-InsightRunModes {
     @{ Name='ServicesStatus'; Source='Internal'; Description='HPC services status' }
     @{ Name='DiagnosticTests';Source='Internal'; Description='Built-in diagnostic tests (certtest)' }
     @{ Name='CommunicationTest'; Source='Internal'; Description='Compute node certificate discovery and headnode API test' }
+    @{ Name='SQLTrace';       Source='Internal'; Description='Extract SQL instance from registry and suggest detailed XE collector/analyzer' }
     @{ Name='SystemInfo';     Source='Internal'; Description='System information/specs' }
     @{ Name='AdvancedHealth'; Source='Internal'; Description='Advanced health checks and recommendations' }
     )
@@ -2614,6 +2685,7 @@ function Invoke-InsightRunMode {
             if (-not $Script:CliTipsOnly) { Write-Header 'RUNNING: All' }
             Invoke-SystemInfo
             Invoke-ServicesStatus
+            Invoke-SqlTrace
             Invoke-NetworkFix
             Invoke-PortTest
             Invoke-CommandTest
@@ -2678,15 +2750,15 @@ function Invoke-InsightRunMode {
         }
         'ListModules' {
             $cliTipModes = @(
-                'PortTest','NetworkFix','CommandTest','NodeValidation','NodeConfig','ClusterMetadata','NodeTemplates','JobHistory','JobDetails','ClusterMetrics','MetricValueHistory','ClusterTopology','ServicesStatus','DiagnosticTests','SystemInfo','AdvancedHealth','NodeHistory','CommunicationTest'
+                'PortTest','NetworkFix','CommandTest','NodeValidation','NodeConfig','ClusterMetadata','NodeTemplates','JobHistory','JobDetails','ClusterMetrics','MetricValueHistory','ClusterTopology','ServicesStatus','DiagnosticTests','SystemInfo','AdvancedHealth','NodeHistory','CommunicationTest','SQLTrace'
             )
             Write-Host "RUN MODES IMPLEMENTED:" -ForegroundColor Yellow
             foreach ($m in $cliTipModes) { Write-Host "  $m" -ForegroundColor White }
             return
         }
-        default {
+    default {
             Import-HpcModule -Quiet | Out-Null
-    if ($RunMode -in @('NodeConfig','ClusterMetadata','NodeTemplates','JobHistory','JobDetails','ClusterMetrics','MetricValueHistory','ClusterTopology','ServicesStatus','DiagnosticTests','SystemInfo','AdvancedHealth','NodeHistory','CommunicationTest')) {
+    if ($RunMode -in @('NodeConfig','ClusterMetadata','NodeTemplates','JobHistory','JobDetails','ClusterMetrics','MetricValueHistory','ClusterTopology','ServicesStatus','DiagnosticTests','SystemInfo','AdvancedHealth','NodeHistory','CommunicationTest','SQLTrace')) {
                 if (-not $Script:CliTipsOnly) { Write-Header ("RUNNING: {0}" -f $RunMode) }
                 switch ($RunMode) {
                     'NodeConfig'       { Invoke-NodeConfig }
@@ -2708,7 +2780,8 @@ function Invoke-InsightRunMode {
                     'SystemInfo'       { Invoke-SystemInfo }
                     'AdvancedHealth'   { Invoke-AdvancedHealth }
             'NodeHistory'      { $tn = if ($NodeName) { $NodeName } else { $SchedulerNode }; Invoke-NodeHistory -NodeName $tn -DaysBack $DaysBack }
-            'CommunicationTest' { Invoke-CommunicationTest }
+        'CommunicationTest' { Invoke-CommunicationTest }
+        'SQLTrace'          { Invoke-SqlTrace }
                 }
                 return
             }

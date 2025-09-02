@@ -276,3 +276,25 @@ Get-Service -Name "Hpc*" | Restart-Service -Force
 # Check cluster connectivity
 # (Use HPC Pack management tools)
 ```
+
+---
+
+## SQL Trace Diagnostics (HPC Pack)
+
+Use these helper tools to capture and analyze lightweight SQL Extended Events traces for HPC Pack databases.
+
+Prerequisites:
+- Windows PowerShell 5.1
+- SqlServer PowerShell module (installed on first run if missing)
+
+Quick start:
+- Discover SQL instance and next steps via Insight run mode:
+	- .\HPC-pack-Insight.ps1 -RunMode SQLTrace
+- Collect a short trace (creates HPC_QuickTrace.xel next to the script):
+	- .\sql-trace-collector.ps1
+- Analyze the trace with performance overview (events/sec, p50/p95/p99, top apps):
+	- .\sql-trace-analyzer.ps1 -ServerInstance <server> -XeFile .\HPC_QuickTrace.xel
+
+Notes:
+- The collector targets HPCScheduler, HPCReporting, and HPCManagement databases and captures rpc_completed and sql_batch_completed events with useful actions (client app, host, login, db, sql_text).
+- The analyzer supports exact file, folder, or wildcard and adds a Performance overview section.
