@@ -16,7 +16,7 @@ Examples:
 .\HPC-pack-Insight.ps1 -DeepHelp
 
 # Print only CLI tips for the selected RunMode(s)
-.\HPC-pack-Insight.ps1 <Modules> -CliTips
+.\HPC-pack-Insight.ps1 <RunMode> -CliTips
 
 # List available modules/run modes
 .\HPC-pack-Insight.ps1 ListModules
@@ -56,7 +56,7 @@ Prerequisites:
 
 Quick start:
 - Discover SQL instance and next steps via Insight run mode:
-	- .\HPC-pack-Insight.ps1 -RunMode SQLTrace
+	- .\HPC-pack-Insight.ps1 SQLTrace
  - Collect a short trace (saves a timestamped file and also overwrites a fixed name HPC_QuickTrace.xel):
 	- .\sql-trace-collector.ps1 [-CollectSeconds 180]
  - Analyze the trace with performance overview (events/sec, p50/p95/p99, top apps):
