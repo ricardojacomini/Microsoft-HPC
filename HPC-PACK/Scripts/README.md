@@ -290,11 +290,15 @@ Prerequisites:
 Quick start:
 - Discover SQL instance and next steps via Insight run mode:
 	- .\HPC-pack-Insight.ps1 -RunMode SQLTrace
-- Collect a short trace (creates HPC_QuickTrace.xel next to the script):
-	- .\sql-trace-collector.ps1
-- Analyze the trace with performance overview (events/sec, p50/p95/p99, top apps):
-	- .\sql-trace-analyzer.ps1 -ServerInstance <server> -XeFile .\HPC_QuickTrace.xel
+ - Collect a short trace (saves a timestamped file and also overwrites a fixed name HPC_QuickTrace.xel):
+	- .\sql-trace-collector.ps1 [-CollectSeconds 180]
+ - Analyze the trace with performance overview (events/sec, p50/p95/p99, top apps):
+	- .\sql-trace-analyzer.ps1
+	- or specify explicitly: .\sql-trace-analyzer.ps1 -ServerInstance <server> -XeFile .\HPC_QuickTrace.xel
 
 Notes:
 - The collector targets HPCScheduler, HPCReporting, and HPCManagement databases and captures rpc_completed and sql_batch_completed events with useful actions (client app, host, login, db, sql_text).
-- The analyzer supports exact file, folder, or wildcard and adds a Performance overview section.
+- The collector accepts -CollectSeconds (default 120) to control capture duration. It writes both a timestamped file (e.g., HPC_QuickTrace_yyyyMMdd_HHmmss.xel) and updates a fixed convenience file (HPC_QuickTrace.xel).
+- The analyzer auto-detects the SQL instance from HKLM:\SOFTWARE\Microsoft\HPC\Security\HAStorageDbConnectionString and can run without parameters. You can still pass -ServerInstance and -XeFile to pin inputs.
+- If HPC_QuickTrace.xel is locked (e.g., open in SSMS/Explorer), close the viewer before deleting. The timestamped file remains as an immutable artifact.
+- Help is available via -h, -help, or -ShowHelp on both collector and analyzer.
