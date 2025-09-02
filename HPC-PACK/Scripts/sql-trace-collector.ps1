@@ -44,6 +44,7 @@ param(
   [string]$SessionName  = "HPC_QuickTrace",
   [int]$CollectSeconds  = 120
 )
+Write-Host "=== Script started at $(Get-Date) ==="
 
 # --- Show help and exit early when requested ---
 if ($ShowHelp) {
@@ -58,8 +59,12 @@ if ($ShowHelp) {
   return
 }
 
-# --- Resolve connection string / server instance ---
+
+
+
+Write-Host "Step: Resolving connection string from registry..."
 $connectionString = (Get-ItemProperty -Path $RegPath).$RegValueName
+Write-Host "  Connection string: $connectionString"
 if (-not $connectionString) { throw "HAStorageDbConnectionString not found at $RegPath" }
 
 if ($connectionString -match "Data Source=([^;]+)") {
@@ -69,25 +74,28 @@ if ($connectionString -match "Data Source=([^;]+)") {
   throw "❌ Could not extract server name from connection string."
 }
 
-# Harden connection: trust server cert to avoid self-signed/enterprise CA chain issues during quick diagnostics
+
+Write-Host "Step: Building trusted connection string..."
 $csb = New-Object System.Data.SqlClient.SqlConnectionStringBuilder $connectionString
 $csb.TrustServerCertificate = $true
 $trustedConnectionString = $csb.ConnectionString
+Write-Host "  Trusted connection string: $trustedConnectionString"
 
-# --- Ensure SqlServer module ---
+Write-Host "Step: Ensuring SqlServer module is available..."
 if (-not (Get-Module -ListAvailable -Name SqlServer)) {
-  try { Install-Module -Name SqlServer -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop } catch {}
+  Write-Host "  SqlServer module not found, installing..."
+  try { Install-Module -Name SqlServer -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop } catch { Write-Host "  Failed to install SqlServer module: $_" }
 }
+Write-Host "  Importing SqlServer module..."
 Import-Module SqlServer -ErrorAction Stop
 
-# --- Save to the same folder as this script ---
+Write-Host "Step: Determining script path and XE file names..."
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $scriptPath) { $scriptPath = (Get-Location).Path }
+Write-Host "  Script path: $scriptPath"
 
-# NOTE: XE treats filename as a prefix and will append rollover/timestamp.
-# We'll rename the newest file to a fixed name after STOP.
 $xePrefix       = Join-Path $scriptPath $SessionName
-$xeFixedName    = Join-Path $scriptPath "$SessionName.xel"  # final stable name after rename
+$xeFixedName    = Join-Path $scriptPath "$SessionName.xel"
 Write-Host "📁 XE target (folder): $scriptPath"
 Write-Host "📦 Final fixed name after stop: $xeFixedName"
 
@@ -99,6 +107,7 @@ WHERE (sqlserver.database_name = N'HPCScheduler'
 "@
 
 # --- Drop -> Create -> Start ---
+Write-Host "Step: Preparing XE session drop/create/start queries..."
 $dropIfExists = "IF EXISTS (SELECT 1 FROM sys.server_event_sessions WHERE name = N'$SessionName') DROP EVENT SESSION [$SessionName] ON SERVER;"
 
 $create = @"
@@ -121,11 +130,29 @@ WITH (
 );
 "@
 
-Invoke-Sqlcmd -ConnectionString $trustedConnectionString -Query $dropIfExists | Out-Null
-Invoke-Sqlcmd -ConnectionString $trustedConnectionString -Query $create       | Out-Null
-Invoke-Sqlcmd -ConnectionString $trustedConnectionString -Query "ALTER EVENT SESSION [$SessionName] ON SERVER STATE = START;" | Out-Null
-Write-Host "✅ Extended Events session '$SessionName' started."
+Write-Host "Step: Dropping existing XE session (if any)..."
+try {
+  Invoke-Sqlcmd -ConnectionString $trustedConnectionString -Query $dropIfExists | Out-Null
+  Write-Host "  Drop completed."
+} catch {
+  Write-Host "  Drop step encountered an error (continuing if not exists): $_"
+}
 
+Write-Host "Step: Creating XE session..."
+try {
+  Invoke-Sqlcmd -ConnectionString $trustedConnectionString -Query $create | Out-Null
+  Write-Host "  Create completed."
+} catch {
+  Write-Host "  Create step failed: $_"
+}
+
+Write-Host "Step: Starting XE session..."
+try {
+  Invoke-Sqlcmd -ConnectionString $trustedConnectionString -Query "ALTER EVENT SESSION [$SessionName] ON SERVER STATE = START;" | Out-Null
+  Write-Host "  Start completed."
+} catch {
+  Write-Host "  Start step failed (session may already be running): $_"
+}
 # --- Tiny workload in each target DB (so you always capture at least something) ---
 #    Only runs if DB exists.
 try {
@@ -144,25 +171,37 @@ try {
       $r.Close()
     } catch {
       # ignore per-DB failures; continue
+      Write-Host "    Failed to touch DB ${db}: $_"
     }
   }
 
   $conn.Close()
+  Write-Host "  Tiny workload completed."
+
 } catch {
   Write-Error "❌ SQL workload failed: $_"
   Invoke-Sqlcmd -ConnectionString $trustedConnectionString -Query "ALTER EVENT SESSION [$SessionName] ON SERVER STATE = STOP;" | Out-Null
+  Write-Host "=== Script ended at $(Get-Date) ==="
   throw
 }
 
-# --- Flush & Stop ---
-Start-Sleep -Milliseconds 500 # just ping test
-Start-Sleep -Seconds $CollectSeconds   # collect for configured duration (default 120s)
+Write-Host "Step: Sleeping for $CollectSeconds seconds to collect events..."
+# Start-Sleep -Milliseconds 500
+Start-Sleep -Seconds $CollectSeconds
+Write-Host "  Sleep completed."
 
-Invoke-Sqlcmd -ConnectionString $trustedConnectionString -Query "ALTER EVENT SESSION [$SessionName] ON SERVER STATE = STOP; WAITFOR DELAY '00:00:01';" | Out-Null
+Write-Host "Step: Stopping XE session..."
+try {
+  Invoke-Sqlcmd -ConnectionString $trustedConnectionString -Query "ALTER EVENT SESSION [$SessionName] ON SERVER STATE = STOP; WAITFOR DELAY '00:00:01';" | Out-Null
+  Write-Host "  Stop completed."
+} catch {
+  Write-Host "  Stop step failed (session may already be stopped): $_"
+}
 Write-Host "⏹️ Extended Events session '$SessionName' stopped."
 
-# --- Rename newest segment to a timestamped name and also update fixed name (HPC_QuickTrace.xel) ---
+Write-Host "Step: Renaming and copying XE files..."
 $pattern = Join-Path $scriptPath ($SessionName + "_*.xel")
+Write-Host "  Looking for XE files matching: $pattern"
 $latest = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue |
           Sort-Object LastWriteTime -Descending |
           Select-Object -First 1
@@ -173,23 +212,29 @@ if ($latest) {
 
   # First, move to a unique timestamped file to avoid name collisions
   try {
+    Write-Host "  Moving XE file to: $datedName"
     Move-Item -Path $latest.FullName -Destination $datedName -Force
+    Write-Host "  Move completed."
   } catch {
-    # If move fails (e.g., due to locks), fallback to copy then remove original if possible
-    try { Copy-Item -Path $latest.FullName -Destination $datedName -Force } catch {}
-    try { Remove-Item -Path $latest.FullName -Force -ErrorAction SilentlyContinue } catch {}
+    Write-Host "  Move failed, trying copy/remove fallback: $_"
+    try { Copy-Item -Path $latest.FullName -Destination $datedName -Force; Write-Host "  Copy completed." } catch { Write-Host "  Copy failed: $_" }
+    try { Remove-Item -Path $latest.FullName -Force -ErrorAction SilentlyContinue; Write-Host "  Remove completed." } catch { Write-Host "  Remove failed: $_" }
   }
 
   # Then, copy/overwrite the fixed file name for convenience
   $fixedUpdated = $false
   try {
+    Write-Host "  Copying to fixed name: $xeFixedName"
     Copy-Item -Path $datedName -Destination $xeFixedName -Force
     $fixedUpdated = $true
+    Write-Host "  Fixed name copy completed."
   } catch {
+    Write-Host "  Fixed name copy failed, trying remove/copy fallback: $_"
     try {
       Remove-Item -Path $xeFixedName -Force -ErrorAction SilentlyContinue
       Copy-Item -Path $datedName -Destination $xeFixedName -Force
       $fixedUpdated = $true
+      Write-Host "  Fixed name copy after remove completed."
     } catch {
       Write-Warning "Could not update fixed file '$xeFixedName'. Last error: $($_.Exception.Message)"
     }
@@ -207,3 +252,4 @@ Write-Host "✅ Done. Analyze with:"
 Write-Host "   .\sql-trace-analyzer.ps1 "
 Write-Host "   .\sql-trace-analyzer.ps1 -ServerInstance `"$serverName`" "
 Write-Host "   .\sql-trace-analyzer.ps1 -ServerInstance `"$serverName`" -XeFile `"$xeFixedName`""
+Write-Host "=== Script ended at $(Get-Date) ==="
