@@ -1,0 +1,257 @@
+
+#!/bin/bash
+
+# Change to the directory where this script is located
+cd "$(dirname "$0")" || { echo "ERROR: Failed to change directory to script location."; exit 1; }
+
+LOCATION="East US" # West US
+NAME="Jacomini"    # Set Name to identify your User here
+
+RESOURCE_GROUP="HPC-CC-$NAME"  # Set RESOURCE GROUP name here
+
+# No need to change after this point
+ID="identity$NAME"
+VM_NAME="ccVM-$NAME"  # Set your VM name here
+
+# Ask user to login to Azure if not already logged in
+if ! az account show &> /dev/null; then
+  echo "You are not logged in to Azure. Please login."
+  az login || { echo "ERROR: Azure login failed."; exit 1; }
+fi
+
+# Select or confirm subscription interactively
+CURRENT_SBC=$(az account show --query id -o tsv)
+CURRENT_SBC_NAME=$(az account show --query name -o tsv)
+
+echo "Current subscription: $CURRENT_SBC_NAME ($CURRENT_SBC)"
+while true; do
+  read -p "Enter the Subscription ID to use [Press Enter to keep current, S to show all]: " SBC
+
+  if [ -z "$SBC" ]; then
+    SBC="$CURRENT_SBC"
+    SBC_NAME="$CURRENT_SBC_NAME"
+
+    echo -e "\nUsing current subscription: $CURRENT_SBC_NAME ($CURRENT_SBC)"
+    break
+  elif [[ "$SBC" =~ ^[Ss]$ ]]; then
+    echo "Available subscriptions:"
+
+    # List all subscriptions and display with index
+    mapfile -t subs < <(az account list --query "[].{name:name, id:id}" -o tsv)
+    for i in "${!subs[@]}"; do
+      name="${subs[$i]%$'\t'*}"
+      id="${subs[$i]##*$'\t'}"
+      if [[ "$id" == "$CURRENT_SBC" ]]; then
+      # Print current subscription in cyan
+        printf "\033[36m%-3s: %-55s %s\033[0m\n" "$i" "$name" "($id)"
+      else
+        printf "%-3s: %-55s %s\n" "$i" "$name" "($id)"
+      fi
+    done
+
+    # Prompt user to select
+    read -p "Enter the number of the subscription you want to use: " choice
+
+    # Set context to selected subscription
+    selected_id="${subs[$choice]##*$'\t'}"
+
+    if [ -n "$selected_id" ]; then
+      SBC="$selected_id"
+      SBC_NAME="${subs[$choice]%$'\t'*}"
+
+      echo -e "\nSetting Subscription Name: $SBC_NAME  ID: $SBC"
+      break
+    fi
+  fi
+done
+
+ROLE="CycleCloud $SBC_NAME $NAME"        
+ROLE=$(echo "$ROLE" | sed 's/&/and/g')   - to avoid Invalid
+
+# Print configuration and ask for confirmation
+echo -e "\nConfiguration to be used:\n"
+echo "  Subscription Name:     $SBC_NAME"
+echo "  Subscription ID:       $SBC"
+echo "  Resource Group:        $RESOURCE_GROUP"
+echo "  Location:              $LOCATION"
+echo "  VM Name:               $VM_NAME"
+echo "  NAME:                  $NAME"
+echo "  Managed Identity ID:   $ID"
+echo "  Role Name:             CycleCloud $ROLE"
+echo
+read -p "Continue with these settings? (Y/N): " CONFIRM
+if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
+  echo "Aborted by user."
+  exit 1
+else
+  az account set --subscription "$SBC" || echo "ERROR: Failed to set subscription. Try again or enter S to show all."
+fi
+
+#  replaces every & in your variable with \&, so sed treats it as a literal character.
+JSON=role.json
+
+# Create a temp file
+TMPFILE=$(mktemp)
+
+# Check for required tools
+if ! command -v az &> /dev/null; then
+  echo "ERROR: Azure CLI (az) is not installed. Exiting."
+  rm -f "$TMPFILE"
+  exit 1
+fi
+if ! command -v jq &> /dev/null; then
+  echo "ERROR: jq is not installed. Exiting."
+  rm -f "$TMPFILE"
+  exit 1
+fi
+
+# Validate role.json existence
+if [ ! -f "role.json" ]; then
+  echo "ERROR: role.json file not found in current directory. Exiting."
+  rm -f "$TMPFILE"
+  exit 1
+fi
+
+# Ensure temp file is cleaned up on exit
+trap 'rm -f "$TMPFILE"' EXIT
+
+sed "s|/subscriptions/\$SBC|/subscriptions/$SBC|g; s|\$ROLE|$ROLE|g" "role.json" > "$TMPFILE"
+
+# Create a custom role definition robustly
+ROLE_EXISTS=$(az role definition list --custom-role-only true | jq -e ".[] | select(.roleName==\"CycleCloud $ROLE\")")
+if [ $? -eq 0 ]; then
+  echo "Role 'CycleCloud $ROLE' already exists. Skipping creation."
+  echo -e "\nTo remove it go to Azure portal: In subscription $(az account show --query name -o tsv) \n Go to Access control (IAM) -> Roles search for CycleCloud $ROLE"
+  echo "Then, remove it"
+else
+  echo "Creating custom role 'CycleCloud $ROLE'..."
+  if az role definition create --role-definition "$TMPFILE"; then
+    echo "Custom role 'CycleCloud $ROLE' created successfully."
+  else
+    echo -e "ERROR: Failed to create custom role 'CycleCloud $ROLE'. Exiting. \n"
+    rm "$TMPFILE"
+    exit 1
+  fi
+fi
+
+if ! az vm show --name "$VM_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
+    echo -e "\nERROR: VM '$VM_NAME' does not exist in resource group '$RESOURCE_GROUP'."
+    echo "Please deploy your VM using CycleCloud ARM templates first:"
+    echo "https://github.com/CycleCloudCommunity/cyclecloud_arm"
+    exit 1
+fi
+
+# Check if managed identity exists
+if az identity show --name "$ID" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
+    echo "Managed identity '$ID' already exists in resource group '$RESOURCE_GROUP'. Skipping creation."
+    exit 1
+fi
+
+az identity create --name "$ID" --resource-group "$RESOURCE_GROUP"
+
+# Retrieve its Object ID
+IDENTITY_ID=$(az identity show \
+  --name $ID \
+  --resource-group $RESOURCE_GROUP \
+  --query 'principalId' \
+  --output tsv)
+
+# Assign the custom role to the identity with proper scope
+az role assignment create \
+  --role "CycleCloud $ROLE" \
+  --assignee-object-id $IDENTITY_ID \
+  --scope /subscriptions/$SBC
+
+# Get the Network Interface ID of the VM
+NIC_ID=$(az vm show \
+  --name "$VM_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "networkProfile.networkInterfaces[0].id" \
+  --output tsv)
+
+# Get the Subnet and VNet Name from the NIC
+SUBNET_ID=$(az network nic show \
+  --ids "$NIC_ID" \
+  --query "ipConfigurations[0].subnet.id" \
+  --output tsv)
+
+# Get the Subnet and VNet Name from the NIC
+SUBNET_ID=$(az network nic show \
+  --ids "$NIC_ID" \
+  --query "ipConfigurations[0].subnet.id" \
+  --output tsv)
+
+# extract the VNet and subnet names from the subnet ID:
+VNET_NAME=$(echo "$SUBNET_ID" | awk -F'/' '{print $(NF-3)}')
+SUBNET_NAME=$(echo "$SUBNET_ID" | awk -F'/' '{print $(NF)}')
+
+# Check if resource group exists
+az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
+# Create storage account
+STORAGE_ACCOUNT="ccstorage$NAME"
+az storage account create \
+  --name "$STORAGE_ACCOUNT" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --sku Standard_LRS \
+  --kind StorageV2 \
+  --allow-shared-key-access true
+
+# Get storage account resource ID
+STORAGE_ID=$(az storage account show \
+  --name "$STORAGE_ACCOUNT" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query id \
+  --output tsv)
+
+# Assign custom role to managed identity on storage account
+az role assignment create \
+  --role "CycleCloud $ROLE" \
+  --assignee-object-id "$IDENTITY_ID" \
+  --scope "$STORAGE_ID"
+
+PE_NAME="pe-$STORAGE_ACCOUNT"
+
+STORAGE_ID=$(az storage account show \
+  --name "$STORAGE_ACCOUNT" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query id \
+  --output tsv)
+
+# Use These Variables to Create the Private Endpoint
+az network private-endpoint create \
+  --name "$PE_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --vnet-name "$VNET_NAME" \
+  --subnet "$SUBNET_NAME" \
+  --private-connection-resource-id "$STORAGE_ID" \
+  --group-id "blob" \
+  --connection-name "${PE_NAME}-conn"
+
+DNS_ZONE="privatelink.blob.core.windows.net"
+az network private-dns zone create \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "$DNS_ZONE"
+
+az network private-dns link vnet create \
+  --resource-group "$RESOURCE_GROUP" \
+  --zone-name "$DNS_ZONE" \
+  --name "${VNET_NAME}-dns-link" \
+  --virtual-network "$VNET_NAME" \
+  --registration-enabled false
+
+az network private-endpoint dns-zone-group create \
+  --resource-group "$RESOURCE_GROUP" \
+  --endpoint-name "$PE_NAME" \
+  --name "default" \
+  --private-dns-zone "$DNS_ZONE"
+
+# blocks public access; only traffic via the private endpoint is allowed
+az storage account update \
+  --name "$STORAGE_ACCOUNT" \
+  --resource-group "$RESOURCE_GROUP" \
+  --default-action Deny
+
+# Remove the temp file
+rm "$TMPFILE"
+

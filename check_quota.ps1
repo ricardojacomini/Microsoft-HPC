@@ -42,7 +42,7 @@ param(
         # VM sizes to check: accept a list of size names OR a map { SizeName = vCPU }.
         # If a list is provided, vCPU will be auto-derived from the size name with Azure fallback when needed.
     [object]$VmSizes = @(
-        'Standard_D4s_v5',
+        'Standard_D4s_v3',
         'Standard_HB120rs_v3'
     ),
     # Regions to check for quota availability

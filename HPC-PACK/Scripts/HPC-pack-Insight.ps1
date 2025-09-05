@@ -2491,10 +2491,11 @@ function Show-InsightHelp {
     Write-Host "  .\\$Script:SelfName NetworkFix -TestHpcNodePorts -NodeName IaaSCN104 -Ports @(40000..40003)" -ForegroundColor White
     Write-Host "" 
     Write-Host "Reference: Microsoft HPC Pack PowerShell, Log files, Trubleshooting, and  Diagnostics references" -ForegroundColor Gray
-    Write-Host "           https://learn.microsoft.com/en-us/powershell/high-performance-computing/microsoft-hpc-pack-command-reference?view=hpc19-ps" -ForegroundColor Gray
-    Write-Host "           https://learn.microsoft.com/en-us/powershell/high-performance-computing/using-service-log-files-for-hpc-pack?view=hpc19-ps" -ForegroundColor Gray
-    Write-Host "           https://learn.microsoft.com/en-us/troubleshoot/azure/hpc/pack/welcome-hpc-pack" -ForegroundColor Gray
-    Write-Host "           https://learn.microsoft.com/en-us/powershell/high-performance-computing/diagnostics-hpc-cluster-manager?view=hpc19-ps" -ForegroundColor Gray
+    Write-Host "   https://learn.microsoft.com/en-us/powershell/high-performance-computing/microsoft-hpc-pack-command-reference?view=hpc19-ps" -ForegroundColor Gray
+    Write-Host "   https://learn.microsoft.com/en-us/powershell/high-performance-computing/using-service-log-files-for-hpc-pack?view=hpc19-ps" -ForegroundColor Gray
+    Write-Host "   https://learn.microsoft.com/en-us/troubleshoot/azure/hpc/pack/welcome-hpc-pack" -ForegroundColor Gray
+    Write-Host "   https://learn.microsoft.com/en-us/powershell/high-performance-computing/diagnostics-hpc-cluster-manager?view=hpc19-ps" -ForegroundColor Gray
+    Write-Host "   https://learn.microsoft.com/en-in/powershell/high-performance-computing/database-capacity-planning-and-tuning-for-microsoft-hpc-pack?view=hpc19-ps#BKMK_Retention" -ForegroundColor Gray
 }
 
 function Show-DeepHelp {
