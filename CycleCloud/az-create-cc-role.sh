@@ -13,6 +13,7 @@ RESOURCE_GROUP="HPC-CC-$NAME"  # Set RESOURCE GROUP name here
 ID="identity$NAME"
 VM_NAME="ccVM-$NAME"  # Set your VM name here
 
+
 # Ask user to login to Azure if not already logged in
 if ! az account show &> /dev/null; then
   echo "You are not logged in to Azure. Please login."
@@ -22,6 +23,7 @@ fi
 # Select or confirm subscription interactively
 CURRENT_SBC=$(az account show --query id -o tsv)
 CURRENT_SBC_NAME=$(az account show --query name -o tsv)
+CURRENT_TENANT_ID=$(az account show --query tenantId -o tsv)
 
 echo "Current subscription: $CURRENT_SBC_NAME ($CURRENT_SBC)"
 while true; do
@@ -70,6 +72,7 @@ ROLE=$(echo "$ROLE" | sed 's/&/and/g')   - to avoid Invalid
 
 # Print configuration and ask for confirmation
 echo -e "\nConfiguration to be used:\n"
+echo "  Tenant ID:             $CURRENT_TENANT_ID"
 echo "  Subscription Name:     $SBC_NAME"
 echo "  Subscription ID:       $SBC"
 echo "  Resource Group:        $RESOURCE_GROUP"
@@ -138,6 +141,9 @@ if ! az vm show --name "$VM_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/nul
     echo -e "\nERROR: VM '$VM_NAME' does not exist in resource group '$RESOURCE_GROUP'."
     echo "Please deploy your VM using CycleCloud ARM templates first:"
     echo "https://github.com/CycleCloudCommunity/cyclecloud_arm"
+    echo "" 
+    echo "Please deploy your VM using CycleCloud Marketplace templates first:"
+    echo "https://ms.portal.azure.com/#create/azurecyclecloud.azure-cyclecloudcyclecloud8"
     exit 1
 fi
 
