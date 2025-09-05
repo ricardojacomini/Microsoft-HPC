@@ -68,7 +68,7 @@ while true; do
 done
 
 ROLE="CycleCloud $SBC_NAME $NAME"        
-ROLE=$(echo "$ROLE" | sed 's/&/and/g')   - to avoid Invalid
+ROLE=$(echo "$ROLE" | sed 's/&/and/g')   #  to avoid Invalid
 
 # Print configuration and ask for confirmation
 echo -e "\nConfiguration to be used:\n"
@@ -80,7 +80,7 @@ echo "  Location:              $LOCATION"
 echo "  VM Name:               $VM_NAME"
 echo "  NAME:                  $NAME"
 echo "  Managed Identity ID:   $ID"
-echo "  Role Name:             CycleCloud $ROLE"
+echo "  Role Name:             $ROLE"
 echo
 read -p "Continue with these settings? (Y/N): " CONFIRM
 if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
@@ -121,17 +121,17 @@ trap 'rm -f "$TMPFILE"' EXIT
 sed "s|/subscriptions/\$SBC|/subscriptions/$SBC|g; s|\$ROLE|$ROLE|g" "role.json" > "$TMPFILE"
 
 # Create a custom role definition robustly
-ROLE_EXISTS=$(az role definition list --custom-role-only true | jq -e ".[] | select(.roleName==\"CycleCloud $ROLE\")")
+ROLE_EXISTS=$(az role definition list --custom-role-only true | jq -e ".[] | select(.roleName==\"$ROLE\")")
 if [ $? -eq 0 ]; then
-  echo "Role 'CycleCloud $ROLE' already exists. Skipping creation."
-  echo -e "\nTo remove it go to Azure portal: In subscription $(az account show --query name -o tsv) \n Go to Access control (IAM) -> Roles search for CycleCloud $ROLE"
+  echo "Role '$ROLE' already exists. Skipping creation."
+  echo -e "\nTo remove it go to Azure portal: In subscription $(az account show --query name -o tsv) \n Go to Access control (IAM) -> Roles search for $ROLE"
   echo "Then, remove it"
 else
-  echo "Creating custom role 'CycleCloud $ROLE'..."
+  echo "Creating custom role '$ROLE'..."
   if az role definition create --role-definition "$TMPFILE"; then
-    echo "Custom role 'CycleCloud $ROLE' created successfully."
+    echo "Custom role '$ROLE' created successfully."
   else
-    echo -e "ERROR: Failed to create custom role 'CycleCloud $ROLE'. Exiting. \n"
+    echo -e "ERROR: Failed to create custom role '$ROLE'. Exiting. \n"
     rm "$TMPFILE"
     exit 1
   fi
@@ -154,6 +154,13 @@ if az identity show --name "$ID" --resource-group "$RESOURCE_GROUP" &> /dev/null
 fi
 
 az identity create --name "$ID" --resource-group "$RESOURCE_GROUP"
+sleep 30
+
+# Assign the managed identity to the VM
+az vm identity assign \
+  --resource-group "$RESOURCE_GROUP" \
+  --name "$VM_NAME" \
+  --identities "$ID"
 
 # Retrieve its Object ID
 IDENTITY_ID=$(az identity show \
@@ -164,8 +171,9 @@ IDENTITY_ID=$(az identity show \
 
 # Assign the custom role to the identity with proper scope
 az role assignment create \
-  --role "CycleCloud $ROLE" \
+  --role "$ROLE" \
   --assignee-object-id $IDENTITY_ID \
+  --assignee-principal-type ServicePrincipal \
   --scope /subscriptions/$SBC
 
 # Get the Network Interface ID of the VM
@@ -182,19 +190,29 @@ SUBNET_ID=$(az network nic show \
   --output tsv)
 
 # Get the Subnet and VNet Name from the NIC
-SUBNET_ID=$(az network nic show \
-  --ids "$NIC_ID" \
-  --query "ipConfigurations[0].subnet.id" \
-  --output tsv)
+
 
 # extract the VNet and subnet names from the subnet ID:
-VNET_NAME=$(echo "$SUBNET_ID" | awk -F'/' '{print $(NF-3)}')
-SUBNET_NAME=$(echo "$SUBNET_ID" | awk -F'/' '{print $(NF)}')
+VNET_NAME=$(echo "$SUBNET_ID" | awk -F'/' '{print $(NF-2)}')
+SUBNET_NAME=$(echo "$SUBNET_ID" | awk -F'/' '{print $NF}')
+
+# Debug output and error handling for VNET_NAME and SUBNET_NAME
+echo "Extracted VNET_NAME: $VNET_NAME"
+echo "Extracted SUBNET_NAME: $SUBNET_NAME"
+
+if [[ -z "$VNET_NAME" || "$VNET_NAME" == "virtualNetworks" ]]; then
+  echo "ERROR: Could not extract a valid VNET_NAME from the subnet ID. Please check your VM and NIC configuration."
+  exit 1
+fi
+if [[ -z "$SUBNET_NAME" ]]; then
+  echo "ERROR: Could not extract a valid SUBNET_NAME from the subnet ID. Please check your VM and NIC configuration."
+  exit 1
+fi
 
 # Check if resource group exists
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 # Create storage account
-STORAGE_ACCOUNT="ccstorage$NAME"
+STORAGE_ACCOUNT="ccstorage${NAME,,}"
 az storage account create \
   --name "$STORAGE_ACCOUNT" \
   --resource-group "$RESOURCE_GROUP" \
@@ -212,8 +230,9 @@ STORAGE_ID=$(az storage account show \
 
 # Assign custom role to managed identity on storage account
 az role assignment create \
-  --role "CycleCloud $ROLE" \
+  --role "$ROLE" \
   --assignee-object-id "$IDENTITY_ID" \
+  --assignee-principal-type ServicePrincipal \
   --scope "$STORAGE_ID"
 
 PE_NAME="pe-$STORAGE_ACCOUNT"
@@ -250,7 +269,8 @@ az network private-endpoint dns-zone-group create \
   --resource-group "$RESOURCE_GROUP" \
   --endpoint-name "$PE_NAME" \
   --name "default" \
-  --private-dns-zone "$DNS_ZONE"
+  --private-dns-zone "$DNS_ZONE" \
+  --zone-name "$DNS_ZONE"
 
 # blocks public access; only traffic via the private endpoint is allowed
 az storage account update \
