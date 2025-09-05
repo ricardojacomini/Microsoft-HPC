@@ -4,6 +4,7 @@
 # Change to the directory where this script is located
 cd "$(dirname "$0")" || { echo "ERROR: Failed to change directory to script location."; exit 1; }
 
+unset NAME
 
 # Allow LOCATION, NAME, RESOURCE_GROUP as named or positional parameters
 DEFAULT_LOCATION="East US" # West US
@@ -42,7 +43,11 @@ RESOURCE_GROUP="${RESOURCE_GROUP:-${POSITIONAL[2]:-HPC-CC-$NAME}}"
 STORAGE_ACCOUNT="ccstorage${NAME,,}"
 DNS_ZONE="privatelink.blob.core.windows.net"
 DNS_LINK_NAME="${VNET_NAME:-virtualNetworks}-dns-link"
+echo $NAME
 
+# No need to change after this point
+ID="identity$NAME"
+VM_NAME="ccVM-$NAME"  # Set your VM name here
 
 # Function to remove storage account, DNS resources, and managed identity
 remove_resources() {
@@ -75,11 +80,6 @@ remove_resources() {
 if [[ $REMOVE_MODE -eq 1 ]]; then
   remove_resources
 fi
-
-# No need to change after this point
-ID="identity$NAME"
-VM_NAME="ccVM-$NAME"  # Set your VM name here
-
 
 # Ask user to login to Azure if not already logged in
 if ! az account show &> /dev/null; then
