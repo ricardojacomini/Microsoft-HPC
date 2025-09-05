@@ -13,7 +13,6 @@ This repository contains a Bash script to automate the creation of a custom Azur
 - `jq` (for JSON parsing)
 - Sufficient Azure permissions to create roles, identities, and resources
 
-
 ## Quick Setup: What to Change
 At the top of `az-create-cc-role.sh`, you only need to edit these variables:
 
@@ -26,7 +25,6 @@ At the top of `az-create-cc-role.sh`, you only need to edit these variables:
 LOCATION="West US"
 NAME="Alice"
 RESOURCE_GROUP="HPC-CC-$NAME"
-ROLE="Shared $NAME"
 ```
 
 You do not need to change anything else unless you want to further customize resource names or logic.

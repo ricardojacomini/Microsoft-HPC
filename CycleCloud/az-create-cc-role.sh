@@ -189,9 +189,6 @@ SUBNET_ID=$(az network nic show \
   --query "ipConfigurations[0].subnet.id" \
   --output tsv)
 
-# Get the Subnet and VNet Name from the NIC
-
-
 # extract the VNet and subnet names from the subnet ID:
 VNET_NAME=$(echo "$SUBNET_ID" | awk -F'/' '{print $(NF-2)}')
 SUBNET_NAME=$(echo "$SUBNET_ID" | awk -F'/' '{print $NF}')
