@@ -31,15 +31,29 @@ You do not need to change anything else unless you want to further customize res
 
 ## Usage
 1. Place your `role.json` file in the same directory as the script.
-2. Edit the script to set your resource group, location, and VM name as needed (see above).
-3. Run the script:
+2. You can pass `LOCATION`, `NAME`, and `RESOURCE_GROUP` as parameters, or let the script use the defaults set at the top. You may use either named or positional parameters:
+   
+   **Named parameters (recommended):**
    ```bash
-   ./az-create-cc-role.sh
+   ./az-create-cc-role.sh --location "West US" --name "Alice" --resource-group "HPC-CC-Alice"
    ```
-4. Follow the interactive prompts to select your subscription and confirm settings.
+   **Positional parameters (legacy):**
+   ```bash
+   ./az-create-cc-role.sh "West US" "Alice" "HPC-CC-Alice"
+   ```
+   If you omit parameters, the script uses the default values in the script.
+   
+   For help, run:
+   ```bash
+   ./az-create-cc-role.sh --help
+   ```
+3. Follow the interactive prompts to select your subscription and confirm settings.
+
 
 ## Notes
- For official Microsoft documentation on creating a custom role and managed identity for CycleCloud, see: [Create a custom role and managed identity for CycleCloud](https://learn.microsoft.com/en-us/azure/cyclecloud/how-to/managed-identities?view=cyclecloud-8)
+- **Please deploy your VM using CycleCloud Marketplace templates first:**
+   https://ms.portal.azure.com/#create/azurecyclecloud.azure-cyclecloudcyclecloud8
+- For official Microsoft documentation on creating a custom role and managed identity for CycleCloud, see: [Create a custom role and managed identity for CycleCloud](https://learn.microsoft.com/en-us/azure/cyclecloud/how-to/managed-identities?view=cyclecloud-8)
 - For VM deployment, see [CycleCloud ARM templates](https://github.com/CycleCloudCommunity/cyclecloud_arm).
 
 ## License

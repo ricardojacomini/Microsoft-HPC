@@ -4,10 +4,77 @@
 # Change to the directory where this script is located
 cd "$(dirname "$0")" || { echo "ERROR: Failed to change directory to script location."; exit 1; }
 
-LOCATION="East US" # West US
-NAME="Jacomini"    # Set Name to identify your User here
 
-RESOURCE_GROUP="HPC-CC-$NAME"  # Set RESOURCE GROUP name here
+# Allow LOCATION, NAME, RESOURCE_GROUP as named or positional parameters
+DEFAULT_LOCATION="East US" # West US
+DEFAULT_NAME="Jacomini"    # Set Name to identify your User here
+DEFAULT_RESOURCE_GROUP="HPC-CC-$DEFAULT_NAME"  # Set RESOURCE GROUP name here
+
+# Parse named parameters (e.g., --location "West US" --name "Alice" --resource-group "HPC-CC-Alice")
+
+REMOVE_MODE=0
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --location)
+      LOCATION="$2"; shift 2;;
+    --name)
+      NAME="$2"; shift 2;;
+    --resource-group)
+      RESOURCE_GROUP="$2"; shift 2;;
+    --remove)
+      REMOVE_MODE=1; shift;;
+    --help|-h)
+      echo "Usage: $0 [--location <LOCATION>] [--name <NAME>] [--resource-group <RESOURCE_GROUP>] [--remove]"
+      echo "   or: $0 <LOCATION> <NAME> <RESOURCE_GROUP> [--remove]"
+      echo "   --remove: Remove storage account, managed identity and associated private DNS resources."
+      exit 0;;
+    *)
+      POSITIONAL+=("$1"); shift;;
+  esac
+done
+
+# Fallback to positional if not set by named
+
+LOCATION="${LOCATION:-${POSITIONAL[0]:-$DEFAULT_LOCATION}}"
+NAME="${NAME:-${POSITIONAL[1]:-$DEFAULT_NAME}}"
+RESOURCE_GROUP="${RESOURCE_GROUP:-${POSITIONAL[2]:-HPC-CC-$NAME}}"
+
+STORAGE_ACCOUNT="ccstorage${NAME,,}"
+DNS_ZONE="privatelink.blob.core.windows.net"
+DNS_LINK_NAME="${VNET_NAME:-virtualNetworks}-dns-link"
+
+
+# Function to remove storage account, DNS resources, and managed identity
+remove_resources() {
+  # Get current subscription info
+  CURR_SUB_NAME=$(az account show --query name -o tsv)
+  CURR_SUB_ID=$(az account show --query id -o tsv)
+  echo -e "\nYou are about to REMOVE resources in subscription: $CURR_SUB_NAME ($CURR_SUB_ID) \n"
+  echo "  Resource Group: $RESOURCE_GROUP"
+  echo "  Storage Account: $STORAGE_ACCOUNT"
+  echo "  Managed Identity: $ID"
+  echo "  Private DNS Zone: $DNS_ZONE"
+  echo "  Private DNS Link: $DNS_LINK_NAME"
+  read -p "Are you sure you want to proceed? (Y/N): " CONFIRM_REMOVE
+  if [[ ! $CONFIRM_REMOVE =~ ^[Yy]$ ]]; then
+    echo "Aborted by user. No resources were deleted."
+    exit 1
+  fi
+  echo "Removing storage account: $STORAGE_ACCOUNT from resource group: $RESOURCE_GROUP"
+  az storage account delete --name "$STORAGE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --yes
+  echo "Removing private DNS link: $DNS_LINK_NAME from DNS zone: $DNS_ZONE"
+  az network private-dns link vnet delete --resource-group "$RESOURCE_GROUP" --zone-name "$DNS_ZONE" --name "$DNS_LINK_NAME"
+  echo "Removing private DNS zone: $DNS_ZONE from resource group: $RESOURCE_GROUP"
+  az network private-dns zone delete --resource-group "$RESOURCE_GROUP" --name "$DNS_ZONE"
+  echo "Removing managed identity: $ID from resource group: $RESOURCE_GROUP"
+  az identity delete --name "$ID" --resource-group "$RESOURCE_GROUP"
+  echo "Done."
+  exit 0
+}
+
+if [[ $REMOVE_MODE -eq 1 ]]; then
+  remove_resources
+fi
 
 # No need to change after this point
 ID="identity$NAME"
@@ -277,4 +344,3 @@ az storage account update \
 
 # Remove the temp file
 rm "$TMPFILE"
-
