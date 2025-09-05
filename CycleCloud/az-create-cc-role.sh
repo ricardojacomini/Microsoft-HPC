@@ -43,7 +43,6 @@ RESOURCE_GROUP="${RESOURCE_GROUP:-${POSITIONAL[2]:-HPC-CC-$NAME}}"
 STORAGE_ACCOUNT="ccstorage${NAME,,}"
 DNS_ZONE="privatelink.blob.core.windows.net"
 DNS_LINK_NAME="${VNET_NAME:-virtualNetworks}-dns-link"
-echo $NAME
 
 # No need to change after this point
 ID="identity$NAME"
