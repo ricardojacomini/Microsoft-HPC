@@ -12,6 +12,7 @@ This repository contains a Bash script to automate the creation of a custom Azur
 - Azure CLI (`az`)
 - `jq` (for JSON parsing)
 - Sufficient Azure permissions to create roles, identities, and resources
+- You must have a VM deployed with CycleCloud before running the script
 
 ## Quick Setup: What to Change
 At the top of `az-create-cc-role.sh`, you only need to edit these variables:
