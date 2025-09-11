@@ -75,14 +75,14 @@
     to list tips from all sections.
 
 .EXAMPLE
-    .\HPC-pack-Insight.ps1 -RunMode All -SchedulerNode headnode
+    .\HPC-pack-Insight-emojis.ps1 -RunMode All -SchedulerNode headnode
 
 .EXAMPLE
-    .\HPC-pack-Insight.ps1 -RunMode ClusterTopology -SchedulerNode headnode
+    .\HPC-pack-Insight-emojis.ps1 -RunMode ClusterTopology -SchedulerNode headnode
 
 .EXAMPLE
 
-    powershell -NoProfile -ExecutionPolicy Unrestricted -File \HPC-pack-Insight.ps1
+    powershell -NoProfile -ExecutionPolicy Unrestricted -File \HPC-pack-Insight-emojis.ps1
 
 .LINK
     Microsoft HPC Pack PowerShell command reference
@@ -752,7 +752,7 @@ function Invoke-ClusterMetadata {
         } catch {}
 
     } else {
-        Write-Host "  WARNING  HPC module not available" -ForegroundColor Yellow
+        Write-Host "  ⚠️  HPC module not available" -ForegroundColor Yellow
     }
 }
 
@@ -812,7 +812,7 @@ function Invoke-NodeTemplates {
         } catch {}
 
     } else {
-        Write-Host "  WARNING  HPC module not available" -ForegroundColor Yellow
+        Write-Host "  ⚠️  HPC module not available" -ForegroundColor Yellow
     }
 }
 
@@ -911,7 +911,7 @@ function Invoke-JobHistory {
             } catch {}
         } catch {}
     } else {
-        Write-Host "  WARNING  HPC module not available" -ForegroundColor Yellow
+        Write-Host "  ⚠️  HPC module not available" -ForegroundColor Yellow
     }
 
 }
@@ -925,7 +925,7 @@ function Get-HpcJobDetails {
     )
 
     if (-not (Import-HpcModule -Quiet)) {
-        Write-Warning "ERROR HPC module not available; cannot query job details."
+        Write-Warning "❌ HPC module not available; cannot query job details."
         return $null
     }
 
@@ -954,7 +954,7 @@ function Get-HpcJobDetails {
             Tasks      = $taskList
         }
     } catch {
-        Write-Warning ("ERROR Could not retrieve job details for JobId {0}: {1}" -f $JobId, $_)
+        Write-Warning ("❌ Could not retrieve job details for JobId {0}: {1}" -f $JobId, $_)
         return $null
     }
 }
@@ -1086,7 +1086,7 @@ function Invoke-ClusterMetrics {
             }
         } catch {}
     } else {
-        Write-Host "  WARNING  HPC module not available" -ForegroundColor Yellow
+        Write-Host "  ⚠️  HPC module not available" -ForegroundColor Yellow
     }
 
 }
@@ -1112,15 +1112,15 @@ function Invoke-SqlTrace {
         $valName = 'HAStorageDbConnectionString'
         $connectionString = (Get-ItemProperty -Path $regPath -ErrorAction Stop).$valName
         if (-not $connectionString) {
-            Write-Host "  ERROR Connection string not found at $regPath ($valName)" -ForegroundColor Red
+            Write-Host "  ❌ Connection string not found at $regPath ($valName)" -ForegroundColor Red
             return
         }
         $serverName = $null
         if ($connectionString -match 'Data Source=([^;]+)') { $serverName = $matches[1] }
         if ($serverName) {
-            Write-Host ("  OK SQL Server instance: {0}" -f $serverName) -ForegroundColor Green
+            Write-Host ("  ✅ SQL Server instance: {0}" -f $serverName) -ForegroundColor Green
         } else {
-            Write-Host '  ERROR Could not parse Data Source from connection string' -ForegroundColor Red
+            Write-Host '  ❌ Could not parse Data Source from connection string' -ForegroundColor Red
         }
 
         # Probe SQL edition and version (trust server certificate for quick diagnostics)
@@ -1137,13 +1137,13 @@ function Invoke-SqlTrace {
             $connection.Open()
             $reader = $command.ExecuteReader()
             if ($reader.Read()) {
-                Write-Host ("   Edition: {0}" -f $reader['Edition']) -ForegroundColor White
-                Write-Host ("   Version: {0}" -f $reader['Version']) -ForegroundColor White
+                Write-Host ("  🧠 Edition: {0}" -f $reader['Edition']) -ForegroundColor White
+                Write-Host ("  📦 Version: {0}" -f $reader['Version']) -ForegroundColor White
             }
             $reader.Close()
             $connection.Close()
         } catch {
-            Write-Host ("  WARNING  SQL query failed: {0}" -f $_) -ForegroundColor Yellow
+            Write-Host ("  ⚠️  SQL query failed: {0}" -f $_) -ForegroundColor Yellow
         }
 
         Write-Host ''
@@ -1157,7 +1157,7 @@ function Invoke-SqlTrace {
             Write-Host "     .\sql-trace-analyzer.ps1 -ServerInstance <server> -XeFile .\\HPC_QuickTrace.xel" -ForegroundColor Cyan
         }
     } catch {
-        Write-Host ("  WARNING  SQL trace readiness failed: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        Write-Host ("  ⚠️  SQL trace readiness failed: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
     }
 }
 
@@ -1170,7 +1170,7 @@ function Invoke-MetricValueHistory {
     )
 
     Write-Section "METRIC VALUE HISTORY"
-    if (-not (Import-HpcModule -Quiet)) { Write-Host "  ERROR HPC module not available" -ForegroundColor Red; return }
+    if (-not (Import-HpcModule -Quiet)) { Write-Host "  ❌ HPC module not available" -ForegroundColor Red; return }
 
     if ($Script:CliTipsOnly) {
         Write-CliHeader -Name 'Metric Value History'
@@ -1190,7 +1190,7 @@ function Invoke-MetricValueHistory {
     try {
         $rows = Get-HpcMetricValueHistory -Scheduler $SchedulerNode -StartDate $StartDate -EndDate $EndDate -ErrorAction Stop
     } catch {
-        Write-Host ("  ERROR Get-HpcMetricValueHistory failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        Write-Host ("  ❌ Get-HpcMetricValueHistory failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
         return
     }
 
@@ -1202,9 +1202,9 @@ function Invoke-MetricValueHistory {
             $parent = Split-Path -Path $fullPath -Parent
             if ($parent -and -not (Test-Path -LiteralPath $parent)) { New-Item -Path $parent -ItemType Directory -Force | Out-Null }
             $rows | Export-Csv -Path $fullPath -NoTypeInformation -Encoding UTF8
-            Write-Host ("  OK Exported to: {0}" -f $fullPath) -ForegroundColor Green
+            Write-Host ("  ✅ Exported to: {0}" -f $fullPath) -ForegroundColor Green
         } catch {
-            Write-Host ("  ERROR Export failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+            Write-Host ("  ❌ Export failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
         }
         if ($VerbosePreference -eq 'Continue') {
             # Show a small preview in verbose mode
@@ -1337,7 +1337,7 @@ function Invoke-ClusterTopology {
         }
     }
     else {
-        Write-Host "  WARNING  HPC module not available" -ForegroundColor Yellow
+        Write-Host "  ⚠️  HPC module not available" -ForegroundColor Yellow
     }
 }
 
@@ -1357,7 +1357,7 @@ function Invoke-ServicesStatus {
     $svcs = Get-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue |
         Where-Object { $_.DisplayName -like '*HPC*' -or $_.DisplayName -like '*MPI*' -or $_.DisplayName -like '*SQL*' } |
         Sort-Object DisplayName
-    if (-not $svcs) { Write-Host "  WARNING  No HPC/MPI/SQL services found" -ForegroundColor Yellow; return }
+    if (-not $svcs) { Write-Host "  ⚠️  No HPC/MPI/SQL services found" -ForegroundColor Yellow; return }
 
     $total   = $svcs.Count
     $running = ($svcs | Where-Object { $_.State -eq 'Running' }).Count
@@ -1664,7 +1664,7 @@ function Invoke-MpiSmokeTest {
             }
         }
     } catch {
-        Write-Host ("  WARNING  MPI smoke test error: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        Write-Host ("  ⚠️  MPI smoke test error: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
     }
 }
 
@@ -1726,7 +1726,7 @@ function Invoke-SystemInfo {
             Write-Host $cpuLine -ForegroundColor White
         }
     } catch {
-        Write-Host "  WARNING  Unable to read system info: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "  ⚠️  Unable to read system info: $($_.Exception.Message)" -ForegroundColor Yellow
     }
     Write-CliTips @(
         "# OS version and architecture",
@@ -1769,7 +1769,7 @@ function Invoke-AdvancedHealth {
 
         # Fallback: if counters aren't available, print guidance and a quick connectivity check
         if (-not $somethingPrinted) {
-            Write-Host "  WARNING  No performance counters returned. Try running PowerShell as Administrator and ensure the 'Performance Logs & Alerts' service is running." -ForegroundColor Yellow
+            Write-Host "  ⚠️  No performance counters returned. Try running PowerShell as Administrator and ensure the 'Performance Logs & Alerts' service is running." -ForegroundColor Yellow
             try {
                 $gw4 = (Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1).NextHop
                 $gw6 = (Get-NetRoute -AddressFamily IPv6 -DestinationPrefix '::/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1).NextHop
@@ -1992,7 +1992,7 @@ function Invoke-AdvancedHealth {
             }
         }
     } catch {
-        Write-Host "  WARNING  Health counters not available" -ForegroundColor Yellow
+        Write-Host "  ⚠️  Health counters not available" -ForegroundColor Yellow
     }
 }
 
@@ -2038,26 +2038,26 @@ function Invoke-CommunicationTest {
         Write-CliTips @(
     '#    Discover HPCPackCommunication Certificate',
    '# Load certificate by thumbprint',
-    'Write-Host "`n Searching for HPCPackCommunication certificate..." -ForegroundColor Cyan',
+    'Write-Host "`n🔍 Searching for HPCPackCommunication certificate..." -ForegroundColor Cyan',
     '$cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object {',
     '    $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)',
     '} | Select-Object -First 1',
     'if (-not $cert) {',
-    '    Write-Host " Not found in LocalMachine\My; checking LocalMachine\Root (visibility only)..." -ForegroundColor DarkYellow',
+    '    Write-Host "🔎 Not found in LocalMachine\My; checking LocalMachine\Root (visibility only)..." -ForegroundColor DarkYellow',
     '    $cert = Get-ChildItem Cert:\LocalMachine\Root | Where-Object {',
     '        $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)',
     '    } | Select-Object -First 1',
     '}',
     'if (-not $cert) {',
-    '    Write-Warning "ERROR Certificate not found or expired in My or Root."',
+    '    Write-Warning "❌ Certificate not found or expired in My or Root."',
     '    return',
     '}',
-    'Write-Host "`nOK Found a Local HPCPackCommunication certificate:" -ForegroundColor Green',
+    'Write-Host "`n✅ Found a Local HPCPackCommunication certificate:" -ForegroundColor Green',
     '$cert = Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -eq $thumbprint }',
-    'if (-not $cert) { Write-Error "ERROR Certificate with thumbprint $thumbprint not found."; return }',
-    'Write-Host "`nOK Certificate loaded:" -ForegroundColor Green',
+    'if (-not $cert) { Write-Error "❌ Certificate with thumbprint $thumbprint not found."; return }',
+    'Write-Host "`n✅ Certificate loaded:" -ForegroundColor Green',
     '$cert | Format-List Subject, Thumbprint, HasPrivateKey, NotAfter',
-    'if (-not $cert.HasPrivateKey) { Write-Error "ERROR Certificate does not have a private key. Cannot use for client authentication."; return }',
+    'if (-not $cert.HasPrivateKey) { Write-Error "❌ Certificate does not have a private key. Cannot use for client authentication."; return }',
     '',
     '# Enforce TLS 1.2',
     '[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12',
@@ -2097,17 +2097,17 @@ function Invoke-CommunicationTest {
     '# Define target URI',
     '$ub = [System.UriBuilder]::new(''https'',$hn,443,''/HpcNaming/api/fabric/resolve/singleton/MonitoringStatefulService'')',
     '$uri = $ub.Uri.AbsoluteUri',
-    'Write-Host "`n Testing endpoint: $uri" -ForegroundColor Cyan',
+    'Write-Host "`n🌐 Testing endpoint: $uri" -ForegroundColor Cyan',
     '',
     '# Make the request',
     'try {',
     '    $response = Invoke-WebRequest -Uri $uri -Certificate $cert -UseBasicParsing',
-    '    Write-Host "OK Request succeeded. Status code: $($response.StatusCode)" -ForegroundColor Green',
+    '    Write-Host "✅ Request succeeded. Status code: $($response.StatusCode)" -ForegroundColor Green',
     '    $response.Content',
     '} catch {',
-    '    Write-Error "ERROR Request failed: $($_.Exception.Message)"',
+    '    Write-Error "❌ Request failed: $($_.Exception.Message)"',
     '    if ($_.Exception.InnerException) {',
-    '        Write-Host " Inner Exception: $($_.Exception.InnerException.Message)" -ForegroundColor DarkYellow',
+    '        Write-Host "🔎 Inner Exception: $($_.Exception.InnerException.Message)" -ForegroundColor DarkYellow',
     '    }',
     '} finally {',
     '    # Reset SSL override',
@@ -2134,7 +2134,7 @@ function Invoke-CommunicationTest {
 
     try {
     # Windows (compute node) Discover HPCPackCommunication Certificate (or honor overrides)
-        Write-Host "`n Searching for HPCPackCommunication certificate..." -ForegroundColor Cyan
+        Write-Host "`n🔍 Searching for HPCPackCommunication certificate..." -ForegroundColor Cyan
 
         $cert = $null
     # 1) Explicit PFX provided
@@ -2143,9 +2143,9 @@ function Invoke-CommunicationTest {
                 $pfxPwd = $null
                 if ($ClientCertPfxPassword) { $pfxPwd = $ClientCertPfxPassword }
                 $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($ClientCertPfxPath, $pfxPwd, 'Exportable,MachineKeySet')
-                Write-Host "OK Loaded client certificate from PFX path." -ForegroundColor Green
+                Write-Host "✅ Loaded client certificate from PFX path." -ForegroundColor Green
             } catch {
-                Write-Warning ("ERROR Failed to load PFX '{0}': {1}" -f $ClientCertPfxPath, $_.Exception.Message)
+                Write-Warning ("❌ Failed to load PFX '{0}': {1}" -f $ClientCertPfxPath, $_.Exception.Message)
             }
         }
     # 2) Thumbprint provided (strict: require in LocalMachine\My and with private key)
@@ -2153,10 +2153,10 @@ function Invoke-CommunicationTest {
             $tp = ($ClientCertThumbprint -replace '\s','').ToUpperInvariant()
             try {
         $cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -eq $tp -and $_.NotAfter -gt (Get-Date) } | Select-Object -First 1
-        } catch { Write-Warning ("ERROR Error searching for thumbprint in My: {0}" -f $_.Exception.Message) }
-        if (-not $cert) { Write-Error ("ERROR Certificate with thumbprint {0} not found in LocalMachine\\My." -f $tp); return }
-        if (-not $cert.HasPrivateKey) { Write-Error ("ERROR Certificate {0} does not have a private key. Cannot use for client authentication." -f $tp); return }
-        Write-Host "OK Using client certificate from LocalMachine\\My by thumbprint." -ForegroundColor Green
+        } catch { Write-Warning ("❌ Error searching for thumbprint in My: {0}" -f $_.Exception.Message) }
+        if (-not $cert) { Write-Error ("❌ Certificate with thumbprint {0} not found in LocalMachine\\My." -f $tp); return }
+        if (-not $cert.HasPrivateKey) { Write-Error ("❌ Certificate {0} does not have a private key. Cannot use for client authentication." -f $tp); return }
+        Write-Host "✅ Using client certificate from LocalMachine\\My by thumbprint." -ForegroundColor Green
         }
         # 3) Auto-discover by subject when no override provided
         if (-not $cert) {
@@ -2165,7 +2165,7 @@ function Invoke-CommunicationTest {
             } | Select-Object -First 1
 
             if (-not $cert) {
-                Write-Host " Not found in LocalMachine\\My; checking Trusted Root (visibility only)..." -ForegroundColor DarkYellow
+                Write-Host "🔎 Not found in LocalMachine\\My; checking Trusted Root (visibility only)..." -ForegroundColor DarkYellow
                 $cert = Get-ChildItem Cert:\LocalMachine\Root | Where-Object {
                     $_.Subject -like "*HPCPackCommunication*" -and $_.NotAfter -gt (Get-Date)
                 } | Select-Object -First 1
@@ -2173,14 +2173,14 @@ function Invoke-CommunicationTest {
         }
 
         if (-not $cert) {
-            Write-Warning "ERROR Certificate not found or expired in My or Root."
+            Write-Warning "❌ Certificate not found or expired in My or Root."
             return
         }
 
         if ($cert.HasPrivateKey) {
-            Write-Host "`nOK Using client certificate (private key present):" -ForegroundColor Green
+            Write-Host "`n✅ Using client certificate (private key present):" -ForegroundColor Green
         } else {
-            Write-Host "`nWARNING  Certificate present but private key missing; proceeding without client certificate." -ForegroundColor Yellow
+            Write-Host "`n⚠️  Certificate present but private key missing; proceeding without client certificate." -ForegroundColor Yellow
         }
         $cert | Format-List Subject, Thumbprint, NotAfter, HasPrivateKey
 
@@ -2191,7 +2191,7 @@ function Invoke-CommunicationTest {
         # endregion
 
     # Override SSL Validation (Safe for PowerShell 5.1) using a static helper class to avoid runspace issues
-    Write-Host "`nWARNING Overriding SSL validation for testing..." -ForegroundColor Yellow
+    Write-Host "`n⚠️ Overriding SSL validation for testing..." -ForegroundColor Yellow
     if (-not ('SSLBypass' -as [type])) {
         Add-Type @"
     using System;
@@ -2246,7 +2246,7 @@ function Invoke-CommunicationTest {
         Write-Error ("Failed to build URI for headnode '{0}': {1}" -f $hn, $_.Exception.Message)
         return
     }
-    Write-Host "`n Testing endpoint: $uri" -ForegroundColor Cyan
+    Write-Host "`n🌐 Testing endpoint: $uri" -ForegroundColor Cyan
     Write-Host "   Tip: If TLS fails, try the scheduler FQDN and ensure it's in the certificate SAN: e.g., headnode.contoso.local" -ForegroundColor DarkGray
         # endregion
 
@@ -2254,20 +2254,20 @@ function Invoke-CommunicationTest {
         try {
             # Only use a client certificate if it has a private key (i.e., from LocalMachine\My)
             $certToUse = $null
-            if ($cert -and $cert.HasPrivateKey) { $certToUse = $cert } else { Write-Host "WARNING  Found certificate without private key (likely from Trusted Root). Proceeding without client certificate." -ForegroundColor Yellow }
+            if ($cert -and $cert.HasPrivateKey) { $certToUse = $cert } else { Write-Host "⚠️  Found certificate without private key (likely from Trusted Root). Proceeding without client certificate." -ForegroundColor Yellow }
             if ($certToUse) {
                 $response = Invoke-WebRequest -Uri $uri -Certificate $certToUse -UseBasicParsing
             } else {
                 $response = Invoke-WebRequest -Uri $uri -UseBasicParsing
             }
-            Write-Host "OK Request succeeded. Status code: $($response.StatusCode)" -ForegroundColor Green
+            Write-Host "✅ Request succeeded. Status code: $($response.StatusCode)" -ForegroundColor Green
             $response.Content
         } catch {
-            Write-Error "ERROR Request failed: $($_.Exception.Message)"
+            Write-Error "❌ Request failed: $($_.Exception.Message)"
             if ($_.Exception.InnerException) {
-                Write-Host " Inner Exception: $($_.Exception.InnerException.Message)" -ForegroundColor DarkYellow
+                Write-Host "🔎 Inner Exception: $($_.Exception.InnerException.Message)" -ForegroundColor DarkYellow
                 if ($_.Exception.InnerException.Message -match 'handshake|client certificate|authentication') {
-                    Write-Host " Likely mutual TLS required by headnode. Run from a compute node that has the HPCPackCommunication client cert, or provide -ClientCertThumbprint or -ClientCertPfxPath." -ForegroundColor Yellow
+                    Write-Host "💡 Likely mutual TLS required by headnode. Run from a compute node that has the HPCPackCommunication client cert, or provide -ClientCertThumbprint or -ClientCertPfxPath." -ForegroundColor Yellow
                 }
             }
         } finally {
@@ -2298,7 +2298,7 @@ function Invoke-JobDetails {
     Write-Section ("JOB DETAILS #{0}" -f $JobId)
     try {
         $info = Get-HpcJobDetails -JobId $JobId
-        if (-not $info) { Write-Host "  WARNING  No details returned for JobId $JobId" -ForegroundColor Yellow; return }
+        if (-not $info) { Write-Host "  ⚠️  No details returned for JobId $JobId" -ForegroundColor Yellow; return }
         Write-Host ("  Job: #{0} '{1}'" -f $info.JobId, $info.Name) -ForegroundColor White
         Write-Host ("  Owner.............: {0}" -f $info.Owner) -ForegroundColor White
         Write-Host ("  State.............: {0}" -f $info.State) -ForegroundColor White
@@ -2339,7 +2339,7 @@ function Invoke-JobDetails {
         }
 
     } catch {
-        Write-Host ("  WARNING  Error printing job details: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        Write-Host ("  ⚠️  Error printing job details: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
     }
 }
 
@@ -2351,7 +2351,7 @@ function Get-HpcNodeHistory {
     )
 
     if (-not (Import-HpcModule -Quiet)) {
-        Write-Warning "ERROR HPC module not available; cannot query node history."
+        Write-Warning "❌ HPC module not available; cannot query node history."
         return $null
     }
 
@@ -2360,7 +2360,7 @@ function Get-HpcNodeHistory {
     try {
         return Get-HpcNodeStateHistory -StartDate $start -EndDate $end -Name $NodeName -Scheduler $SchedulerNode -ErrorAction SilentlyContinue
     } catch {
-        Write-Warning ("ERROR Could not retrieve node history for {0}: {1}" -f $NodeName, $_.Exception.Message)
+        Write-Warning ("❌ Could not retrieve node history for {0}: {1}" -f $NodeName, $_.Exception.Message)
         return $null
     }
 }
@@ -2380,7 +2380,7 @@ function Invoke-NodeHistory {
     try {
         $hist = Get-HpcNodeHistory -NodeName $NodeName -DaysBack $DaysBack
         $rows = @($hist)
-        if (-not $rows -or $rows.Count -eq 0) { Write-Host "  WARNING  No history found" -ForegroundColor Yellow; return }
+        if (-not $rows -or $rows.Count -eq 0) { Write-Host "  ⚠️  No history found" -ForegroundColor Yellow; return }
 
         $fmt = "  {0,-22} {1,-14} {2}"
         Write-Host ($fmt -f 'TIMESTAMP','EVENT','NODE') -ForegroundColor White
@@ -2395,7 +2395,7 @@ function Invoke-NodeHistory {
             Write-Host ($fmt -f $ts, $evt, $node) -ForegroundColor White
         }
     } catch {
-        Write-Host ("  WARNING  Error printing node history: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        Write-Host ("  ⚠️  Error printing node history: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
     }
 }
 
