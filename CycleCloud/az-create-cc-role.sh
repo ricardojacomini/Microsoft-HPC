@@ -14,6 +14,7 @@ DEFAULT_RESOURCE_GROUP="HPC-CC-$DEFAULT_NAME"  # Set RESOURCE GROUP name here
 # Parse named parameters (e.g., --location "West US" --name "Alice" --resource-group "HPC-CC-Alice")
 
 REMOVE_MODE=0
+POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case $1 in
     --location)

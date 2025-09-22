@@ -4,7 +4,7 @@ This checklist provides a step-by-step guide for deploying and configuring Azure
 
 ## 🚀 Pre-Deployment Steps
 - [ ] **Azure CLI Login**: `az login`
-- [ ] **Choose Deployment Version**: Basic (`README-basic.md`) or Managed Identity (`README-managed-identity.md`)
+- [ ] **Choose Deployment Version**: Basic (`README.md`) or Managed Identity (`README-managed-identity.md`)
 - [ ] **Check AMLFS Quota**: Run quota check commands from README
 - [ ] **Verify Resource Group**: Create or select target resource group
 
