@@ -46,8 +46,9 @@ param(
     [object]$VmSizes = @(
         #'Standard_D4s_v3',
         #'Standard_HB120rs_v3',
-        'Standard_D8ds_v5',
-        'Standard_D8ds_v6'
+        'Standard_E64ds_v4',
+        'Standard_E64ds_v5',
+        'Standard_E64ds_v6'
     ),
     # Regions to check for quota availability
     [string[]]$Regions = @(

@@ -1,15 +1,17 @@
 
 #!/bin/bash
 
+echo "Deployment required CycleCloud and Storage Account"
+
 # Change to the directory where this script is located
 cd "$(dirname "$0")" || { echo "ERROR: Failed to change directory to script location."; exit 1; }
 
 unset NAME
 
 # Allow LOCATION, NAME, RESOURCE_GROUP as named or positional parameters
-DEFAULT_LOCATION="East US" # West US
+DEFAULT_LOCATION="canadacentral" # West US
 DEFAULT_NAME="Jacomini"    # Set Name to identify your User here
-DEFAULT_RESOURCE_GROUP="HPC-CC-$DEFAULT_NAME"  # Set RESOURCE GROUP name here
+DEFAULT_RESOURCE_GROUP="HPC-CC-$DEFAULT_LOCATION-$DEFAULT_NAME"  # Set RESOURCE GROUP name here
 
 # Parse named parameters (e.g., --location "West US" --name "Alice" --resource-group "HPC-CC-Alice")
 
@@ -39,9 +41,19 @@ done
 
 LOCATION="${LOCATION:-${POSITIONAL[0]:-$DEFAULT_LOCATION}}"
 NAME="${NAME:-${POSITIONAL[1]:-$DEFAULT_NAME}}"
-RESOURCE_GROUP="${RESOURCE_GROUP:-${POSITIONAL[2]:-HPC-CC-$NAME}}"
+RESOURCE_GROUP="${RESOURCE_GROUP:-${POSITIONAL[2]:-$DEFAULT_RESOURCE_GROUP}}"
 
-STORAGE_ACCOUNT="ccstorage${NAME,,}"
+# Normalize and validate storage account name (must be 3-24 lowercase letters/numbers)
+MAXLEN=24
+STORAGE_ACCOUNT="stacct${NAME,,}$(date +%d%m%Y)"
+
+# Trim to maximum allowed length
+STORAGE_ACCOUNT=$(echo "$STORAGE_ACCOUNT" | cut -c1-$MAXLEN)
+# Ensure at least 3 characters; fallback to a safe generated name if needed
+if [ ${#STORAGE_ACCOUNT} -lt 3 ]; then
+  STORAGE_ACCOUNT="stac$(date +%s | tr -dc '0-9' | tail -c 6)"
+fi
+
 DNS_ZONE="privatelink.blob.core.windows.net"
 DNS_LINK_NAME="${VNET_NAME:-virtualNetworks}-dns-link"
 
@@ -276,7 +288,7 @@ fi
 # Check if resource group exists
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 # Create storage account
-STORAGE_ACCOUNT="ccstorage${NAME,,}"
+
 az storage account create \
   --name "$STORAGE_ACCOUNT" \
   --resource-group "$RESOURCE_GROUP" \

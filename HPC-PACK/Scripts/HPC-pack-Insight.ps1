@@ -284,7 +284,7 @@ function Test-HpcNodePorts {
     try {
         if (-not $Ports -or $Ports.Count -eq 0) {
             # Default to common HPC Pack ports if none provided
-            $Ports = @(80,443,9087,9090,9091,9094)
+            $Ports = @(80,443,8676,8677,8678,9087,9090,9091,9094)
         }
         foreach ($port in $Ports) {
             try {
@@ -443,7 +443,7 @@ function Invoke-NetworkFix {
         $targetNode = if ($NodeName) { $NodeName } else { $SchedulerNode }
         $portList = if ($Port) { @($Port) }
                    elseif ($Ports) { $Ports }
-                   else { @(80,443,9087,9090,9091,9094) }
+                   else { @(80,443,8676,8677,8678,9087,9090,9091,9094) }
         Write-Host ("  Target Node: {0}" -f $targetNode) -ForegroundColor White
         Write-Host ("  Ports......: {0}" -f ($portList -join ', ')) -ForegroundColor White
         Test-HpcNodePorts -NodeName $targetNode -Ports $portList
@@ -2470,8 +2470,8 @@ function Show-InsightHelp {
     Write-Host "  .\\$Script:SelfName -RunMode NetworkFix -FixNetworkIssues -SchedulerNode headnode" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName -JobId 12345 -SchedulerNode headnode" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName JobHistory -JobId 12345 -Verbose" -ForegroundColor White
-    Write-Host "  .\\$Script:SelfName JobHistory -NodeName IaaSCN000 -DaysBack 14" -ForegroundColor White
-    Write-Host "  .\\$Script:SelfName NodeHistory headnode -DaysBack 14" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName JobHistory -NodeName IaaSCN000 -DaysBack 1" -ForegroundColor White
+    Write-Host "  .\\$Script:SelfName NodeHistory headnode -DaysBack 1" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName All -Verbose -ExportToFile -ReportFile report.log" -ForegroundColor White
     Write-Host "  .\\$Script:SelfName All -Verbose" -ForegroundColor Cyan
     Write-Host "  .\\$Script:SelfName ClusterTopology" -ForegroundColor White

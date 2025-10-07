@@ -45,9 +45,9 @@ IFS=$'\n\t'
 CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Allow LOCATION, NAME, RESOURCE_GROUP as named or positional parameters
-DEFAULT_LOCATION="East US" # West US
+DEFAULT_LOCATION="canadacentral" # West US
 DEFAULT_NAME="Jacomini"    # Set Name to identify your User here
-DEFAULT_RESOURCE_GROUP="HPC-AI-$DEFAULT_NAME"  # Set RESOURCE GROUP name here
+DEFAULT_RESOURCE_GROUP="HPC-AI-$DEFAULT_LOCATION-$DEFAULT_NAME"  # Set RESOURCE GROUP name here
 
 # Parse named parameters (e.g., --location "West US" --name "Alice" --resource-group "HPC-CC-Alice")
 
@@ -77,7 +77,7 @@ done
 
 LOCATION="${LOCATION:-${POSITIONAL[0]:-$DEFAULT_LOCATION}}"
 NAME="${NAME:-${POSITIONAL[1]:-$DEFAULT_NAME}}"
-RESOURCE_GROUP="${RESOURCE_GROUP:-${POSITIONAL[2]:-HPC-CC-$NAME}}"
+RESOURCE_GROUP="${RESOURCE_GROUP:-${POSITIONAL[2]:-$DEFAULT_RESOURCE_GROUP}}"
 
 # Standard tags for all created resources (requires NAME to be set)
 COMMON_TAGS=("owner=${NAME}" "purpose=HPC-AI-storage-network-identity" "createdBy=az-create-storage-account" "createdAt=${CREATED_AT}")
@@ -86,16 +86,16 @@ COMMON_TAGS=("owner=${NAME}" "purpose=HPC-AI-storage-network-identity" "createdB
 VNET_NAME="${VNET_NAME:-vnet-$NAME}"
 
 # Normalize and validate storage account name (must be 3-24 lowercase letters/numbers)
-RAW_NAME=$(echo "${NAME:-$DEFAULT_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
-BASE_PREFIX="storageaccount"
 MAXLEN=24
-STORAGE_ACCOUNT="${BASE_PREFIX}${RAW_NAME}"
+STORAGE_ACCOUNT="stacct${NAME,,}$(date +%d%m%Y)"
+
 # Trim to maximum allowed length
 STORAGE_ACCOUNT=$(echo "$STORAGE_ACCOUNT" | cut -c1-$MAXLEN)
 # Ensure at least 3 characters; fallback to a safe generated name if needed
 if [ ${#STORAGE_ACCOUNT} -lt 3 ]; then
   STORAGE_ACCOUNT="stac$(date +%s | tr -dc '0-9' | tail -c 6)"
 fi
+
 DNS_ZONE="privatelink.blob.core.windows.net"
 DNS_LINK_NAME="${VNET_NAME}-dns-link"
 
@@ -298,8 +298,9 @@ else
   echo "Resource group '$RESOURCE_GROUP' already exists."
 fi
 
-# Create VNet and subnets for later AKS and Lustre usage
-echo "Creating VNet '$VNET_NAME' with address space 10.0.0.0/16 and subnets: default(10.0.0.0/24), lustre(10.1.0.0/22), aks(10.2.0.0/22)"
+
+# Create VNet and subnets for later AKS, Lustre, and MySQL usage
+echo "Creating VNet '$VNET_NAME' with address space 10.0.0.0/16 and subnets: default(10.0.0.0/24), lustre(10.0.4.0/22), aks(10.0.8.0/22), mysql(10.0.12.0/24)"
 az network vnet create \
   --resource-group "$RESOURCE_GROUP" \
   --name "$VNET_NAME" \
@@ -329,6 +330,17 @@ else
   echo "Subnet 'aks' already exists."
 fi
 
+# Create MySQL subnet (idempotent)
+if ! az network vnet subnet show --resource-group "$RESOURCE_GROUP" --vnet-name "$VNET_NAME" --name mysql &> /dev/null; then
+  az network vnet subnet create \
+    --resource-group "$RESOURCE_GROUP" \
+    --vnet-name "$VNET_NAME" \
+    --name mysql \
+    --address-prefixes 10.0.12.0/24 || { echo "ERROR: Failed to create subnet 'mysql'"; exit 1; }
+else
+  echo "Subnet 'mysql' already exists."
+fi
+
 # Create a dedicated subnet for private endpoints (recommended)
 PE_SUBNET_NAME="priv-endpoint"
 PE_SUBNET_PREFIX="10.0.255.0/27"
@@ -349,7 +361,7 @@ if [ -z "$VNET_ID" ]; then
 fi
 
 # Create storage account
-# STORAGE_ACCOUNT variable already normalized at top
+
 az storage account create \
   --name "$STORAGE_ACCOUNT" \
   --resource-group "$RESOURCE_GROUP" \
