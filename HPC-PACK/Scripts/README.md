@@ -45,8 +45,9 @@ Run modes implemented:
 - SQLTrace
 
 # Execute, gather, and export all modules ( run as adminstrator )
+```powershell
  powershell -NoProfile -ExecutionPolicy Unrestricted -File .\HPC-pack-Insight.ps1 All -SchedulerNode <headnode_name> -ExportToFile -ReportFile report-hpc-pack.log
-
+```
 ---
 
 ## SQL Trace Diagnostics (HPC Pack)
