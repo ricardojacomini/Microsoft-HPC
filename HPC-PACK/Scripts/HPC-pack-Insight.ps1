@@ -2415,7 +2415,7 @@ function Invoke-PortTest {
     $targetNode = if ($NodeName) { $NodeName } else { $SchedulerNode }
     $portList = if ($Port) { @($Port) }
                elseif ($Ports) { $Ports }
-               else { @(80,443,5800,5801,5802,5969,5970,9087,9090,9091,9094) }
+               else { @(80,443,5800,5801,5802,5969,5970,8676,8677,8678,9087,9090,9091,9094) }
     Write-Host ("  Target Node: {0}" -f $targetNode) -ForegroundColor White
     Write-Host ("  Ports......: {0}" -f ($portList -join ', ')) -ForegroundColor White
     Test-HpcNodePorts -NodeName $targetNode -Ports $portList
