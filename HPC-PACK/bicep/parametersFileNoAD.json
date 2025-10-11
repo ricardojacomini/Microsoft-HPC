@@ -1,0 +1,105 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "hpcPackRelease": {
+      "value": "2019 Update 3"
+    },
+    "clusterName": {
+      "value": "headnode"
+    },
+    "domainName": {
+      "value": "hpc.cluster"
+    },
+    "domainControllerVMSize": {
+      "value": "Standard_D4s_v5"
+    },
+    "headNodeOS": {
+      "value": "WindowsServer2019"
+    },
+    "headNodeImageResourceId": {
+      "value": "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/images/xxx"
+    },
+    "headNodeOsDiskType": {
+      "value": "Standard_HDD"
+    },
+    "headNodeVMSize": {
+      "value": "Standard_D4s_v5"
+    },
+    "computeNodeNamePrefix": {
+      "value": "IaaSCN"
+    },
+    "computeNodeNumber": {
+      "value": 2
+    },
+    "computeNodeImage": {
+      "value": "WindowsServer2019_Gen2"
+    },
+    "computeNodeImageResourceId": {
+      "value": "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/images/xxx"
+    },
+    "computeNodeOsDiskType": {
+      "value": "Standard_HDD"
+    },
+    "computeNodeVMSize": {
+      "value": "Standard_HB120rs_v3"
+    },
+    "availabilitySetOption": {
+      "value": "Auto"
+    },
+    "adminUsername": {
+      "value": "hpcadmin"
+    },
+    "adminPassword": {
+      "value": "P@ssword123!"
+    },
+    "enableManagedIdentityOnHeadNode": {
+      "value": "Yes"
+    },
+    "createPublicIPAddressForHeadNode": {
+      "value": "Yes"
+    },
+    "enableAcceleratedNetworking": {
+      "value": "Yes"
+    },
+    "headNodeDataDiskCount": {
+      "value": 0
+    },
+    "headNodeDataDiskSize": {
+      "value": 32
+    },
+    "headNodeDataDiskType": {
+      "value": "Standard_HDD"
+    },
+    "computeNodeDataDiskCount": {
+      "value": 0
+    },
+    "computeNodeDataDiskSize": {
+      "value": 32
+    },
+    "computeNodeDataDiskType": {
+      "value": "Standard_HDD"
+    },
+    "useVmssForComputeNodes": {
+      "value": "No"
+    },
+    "useSpotInstanceForComputeNodes": {
+      "value": "No"
+    },
+    "autoInstallInfiniBandDriver": {
+      "value": "Yes"
+    },
+    "installIBDriverOnHeadNode": {
+      "value": "No"
+    },
+    "installIBDriverOnComputeNodes": {
+      "value": "Yes"
+    },
+    "authenticationKey": {
+      "value": null
+    },
+    "enableAzureMonitor": {
+      "value": "No"
+    }
+  }
+}

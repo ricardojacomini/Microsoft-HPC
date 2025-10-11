@@ -392,6 +392,28 @@
         "description": "Specify whether you want to install InfiniBandDriver automatically for the VMs with InfiniBand network. This setting is ignored for the VMs without InfiniBand network."
       }
     },
+    "installIBDriverOnHeadNode": {
+      "type": "string",
+      "defaultValue": "Yes",
+      "allowedValues": [
+        "Yes",
+        "No"
+      ],
+      "metadata": {
+        "description": "Specify whether to install InfiniBand driver on head node. Overrides autoInstallInfiniBandDriver for head node only."
+      }
+    },
+    "installIBDriverOnComputeNodes": {
+      "type": "string",
+      "defaultValue": "No",
+      "allowedValues": [
+        "Yes",
+        "No"
+      ],
+      "metadata": {
+        "description": "Specify whether to install InfiniBand driver on compute nodes. Overrides autoInstallInfiniBandDriver for compute nodes only."
+      }
+    },
     "authenticationKey": {
       "type": "securestring",
       "defaultValue": "",
@@ -425,6 +447,8 @@
     "cnRDMACapable": "[__bicep.isRDMACapable(parameters('computeNodeVMSize'))]",
     "hnRDMACapable": "[__bicep.isRDMACapable(parameters('headNodeVMSize'))]",
     "autoEnableInfiniBand": "[equals(parameters('autoInstallInfiniBandDriver'), 'Yes')]",
+    "enableIBDriverOnHeadNode": "[equals(parameters('installIBDriverOnHeadNode'), 'Yes')]",
+    "enableIBDriverOnComputeNodes": "[equals(parameters('installIBDriverOnComputeNodes'), 'Yes')]",
     "useVmssForCN": "[equals(parameters('useVmssForComputeNodes'), 'Yes')]",
     "createHNInAVSet": "[and(not(variables('useVmssForCN')), or(equals(parameters('availabilitySetOption'), 'AllNodes'), and(equals(parameters('availabilitySetOption'), 'Auto'), variables('hnRDMACapable'))))]",
     "createCNInAVSet": "[and(not(variables('useVmssForCN')), or(or(equals(parameters('availabilitySetOption'), 'AllNodes'), equals(parameters('availabilitySetOption'), 'ComputeNodes')), and(equals(parameters('availabilitySetOption'), 'Auto'), variables('cnRDMACapable'))))]",
@@ -2002,7 +2026,7 @@
             "value": "[parameters('headNodeVMSize')]"
           },
           "installIBDriver": {
-            "value": "[and(variables('hnRDMACapable'), variables('autoEnableInfiniBand'))]"
+            "value": "[and(variables('hnRDMACapable'), variables('enableIBDriverOnHeadNode'))]"
           },
           "logSettings": "[if(variables('_enableAzureMonitor'), createObject('value', reference('monitor').outputs.logSettings.value), createObject('value', null()))]",
           "amaSettings": "[if(variables('_enableAzureMonitor'), createObject('value', reference('monitor').outputs.amaSettings.value), createObject('value', null()))]",
@@ -2431,7 +2455,7 @@
               "properties": {
                 "publisher": "Microsoft.HpcCompute",
                 "type": "InfiniBandDriverWindows",
-                "typeHandlerVersion": "1.2",
+                "typeHandlerVersion": "1.5",
                 "autoUpgradeMinorVersion": true
               },
               "dependsOn": [
@@ -2756,7 +2780,7 @@
             "value": "[variables('vmPriority')]"
           },
           "installRDMADriver": {
-            "value": "[and(variables('cnRDMACapable'), variables('autoEnableInfiniBand'))]"
+            "value": "[and(variables('cnRDMACapable'), variables('enableIBDriverOnComputeNodes'))]"
           },
           "enableAcceleratedNetworking": {
             "value": "[equals(parameters('enableAcceleratedNetworking'), 'Yes')]"
@@ -3264,7 +3288,7 @@
             "windowsIBDriver": {
               "condition": "[and(variables('isWindowsOS'), parameters('installRDMADriver'))]",
               "type": "Microsoft.Compute/virtualMachines/extensions",
-              "apiVersion": "2019-03-01",
+              "apiVersion": "2023-03-01",
               "name": "[format('{0}/{1}', parameters('vmName'), 'installInfiniBandDriverWindows')]",
               "location": "[resourceGroup().location]",
               "properties": {
@@ -3408,7 +3432,7 @@
             "value": "[variables('vmPriority')]"
           },
           "installRDMADriver": {
-            "value": "[and(variables('cnRDMACapable'), variables('autoEnableInfiniBand'))]"
+            "value": "[and(variables('cnRDMACapable'), variables('enableIBDriverOnComputeNodes'))]"
           },
           "enableAcceleratedNetworking": {
             "value": "[equals(parameters('enableAcceleratedNetworking'), 'Yes')]"

@@ -1,36 +1,29 @@
-import { HeadNodeImage, HpcPackRelease, getHeadNodeImageRef, WindowsComputeNodeImage, windowsComputeNodeImages, DiskType, diskTypes, DiskCount, DiskSizeInGB, YesOrNo, YesOrNoOrAuto, sharedResxBaseUrl, isRDMACapable } from 'shared/types-and-vars.bicep'
+import { HpcPackRelease, getHeadNodeImageRef, HeadNodeImage, WindowsComputeNodeImage, windowsComputeNodeImages, DiskType, diskTypes, DiskCount, DiskSizeInGB, YesOrNo, YesOrNoOrAuto, sharedResxBaseUrl, isRDMACapable } from 'shared/types-and-vars.bicep'
 
 @description('The release of HPC Pack')
 param hpcPackRelease HpcPackRelease = '2019 Update 3'
 
-@description('The name of the HPC cluster, also used as the host name prefix of the domain controller. It must contain between 3 and 12 characters with lowercase letters and numbers, and must start with a letter.')
-@minLength(3)
-@maxLength(12)
-param clusterName string
-
-@description('The fully qualified domain name (FQDN) for the private domain forest which will be created by this template, for example \'hpc.cluster\'.')
-param domainName string = 'hpc.cluster'
-
-@description('The VM size for the domain controller, all available VM sizes in Azure can be found at https://azure.microsoft.com/en-us/documentation/articles/virtual-machines-windows-sizes')
-param domainControllerVMSize string = 'Standard_D2_v3'
-
-@description('The name of the SQL Server VM.')
+@description('The name of the HPC cluster. It must be unique in the domain forest; It must contain between 3 and 15 characters with lowercase letters and numbers, and must start with a letter.')
 @minLength(3)
 @maxLength(15)
-param sqlServerVMName string
+param clusterName string
 
-@description('The disk type of SQL server VM. Note that Premium_SSD only supports some VM sizes, see <a href=\'https://azure.microsoft.com/en-us/documentation/articles/virtual-machines-windows-sizes\' target=\'_blank\'>Azure VM Sizes</a>')
-param sqlServerDiskType DiskType = 'Premium_SSD'
+@description('The existing virtual network in which all VMs of the HPC cluster will be created.')
+param virtualNetworkName string
 
-@description('The VM size for the SQL Server VM, all available VM sizes in Azure can be found at https://azure.microsoft.com/en-us/documentation/articles/virtual-machines-windows-sizes')
-param sqlServerVMSize string = 'Standard_DS4_v2'
+@description('The resource group in which the existing virtual network was created.')
+param virtualNetworkResourceGroupName string
 
-@description('The list of two head node names separated by comma without any surrounding whitespace, for example \'HPCHN01,HPCHN02\'. The head node names must be unique in the domain forest.')
-@minLength(5)
-@maxLength(31)
-param headNodeList string = 'HPCHN01,HPCHN02'
+@description('The existing subnet in which all VMs of the HPC cluster will be created.')
+param subnetName string
 
-@description('The operating system of the head nodes.')
+@description('The fully qualified domain name (FQDN) for the existing domain forest in which the HPC cluster will join, for example \'hpc.cluster\'.')
+param domainName string
+
+@description('Optional, the organizational unit (OU) in the domain, for example \'OU=testOU,DC=domain,DC=Domain,DC=com\'. The default value is the default OU for machine objects in the domain.')
+param domainOUPath string = ''
+
+@description('The operating system of the head node.')
 param headNodeOS HeadNodeImage = 'WindowsServer2019'
 
 @description('Specify only when \'CustomImage\' selected for headNodeOS. The resource Id of the head node image, it can be a managed VM image in your own subscription (/subscriptions/&lt;SubscriptionId&gt;/resourceGroups/&lt;ResourceGroupName&gt;/providers/Microsoft.Compute/images/&lt;ImageName&gt;) or a shared VM image from Azure Shared Image Gallery (/subscriptions/&lt;SubscriptionId&gt;/resourceGroups/&lt;ResourceGroupName&gt;/providers/Microsoft.Compute/galleries/&lt;GalleryName&gt;/images/&lt;ImageName&gt;/versions/&lt;ImageVersion&gt;).')
@@ -45,11 +38,9 @@ param headNodeVMSize string = 'Standard_DS4_v2'
 @description('The name prefix of the compute nodes. It must be no more than 12 characters, begin with a letter, and contain only letters, numbers and hyphens. For example, if \'IaaSCN\' is specified, the compute node names will be \'IaaSCN000\', \'IaaSCN001\', and so on. The compute node names must be unique in the domain forest.')
 @minLength(1)
 @maxLength(12)
-param computeNodeNamePrefix string = 'IaaSCN'
+param computeNodeNamePrefix string
 
 @description('The number of the compute nodes.')
-@minValue(1)
-@maxValue(500)
 param computeNodeNumber int = 10
 
 @description('The VM image of the compute nodes.')
@@ -61,24 +52,29 @@ param computeNodeImageResourceId string = '/subscriptions/xxx/resourceGroups/xxx
 @description('The disk type of compute node VM. Note that Premium_SSD only supports some VM sizes, see <a href=\'https://azure.microsoft.com/en-us/documentation/articles/virtual-machines-windows-sizes\' target=\'_blank\'>Azure VM Sizes</a>')
 param computeNodeOsDiskType DiskType = 'Standard_HDD'
 
-//TODO: Make a type for VM size
 @description('The VM size of the compute nodes, all available VM sizes in Azure can be found at <a href=\'https://azure.microsoft.com/en-us/documentation/articles/virtual-machines-windows-sizes\' target=\'_blank\'>Azure VM Sizes</a>. Note that some VM sizes in the list are only available in some particular locations. Please check the availability and the price of the VM sizes at https://azure.microsoft.com/pricing/details/virtual-machines/windows/ before deployment.')
 param computeNodeVMSize string = 'Standard_D3_v2'
 
-@description('Specify whether you want to create the compute nodes in Azure availability set, if \'Auto\' is specified, compute nodes are created in availability set only when the VM size is RDMA capable.')
-param computeNodeInAVSet YesOrNoOrAuto = 'Auto'
+@description('Specify whether you want to create the HPC nodes in an Azure availability set. Select \'AllNodes\' to create both head node(s) and compute nodes in an availability set; select \'ComputeNodes\' to only create compute nodes in an availability set; select \'Auto\' to only create RDMA capable nodes in availability set; select \'None\' not to create an availability set.')
+@allowed([
+  'AllNodes'
+  'ComputeNodes'
+  'None'
+  'Auto'
+])
+param availabilitySetOption string = 'Auto'
 
 @description('Administrator user name for the virtual machines and the Active Directory domain.')
 param adminUsername string = 'hpcadmin'
 
-@description('Administrator password for the virtual machines and the Active Directory domain')
+@description('Administrator password for the virtual machines and the Active Directory domain. Password must meet complexity requirements, see https://docs.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/password-must-meet-complexity-requirements')
 @secure()
 param adminPassword string
 
 @description('Specify whether to enable system-assigned managed identity on the head node, and use it to manage the Azure IaaS compute nodes.')
 param enableManagedIdentityOnHeadNode YesOrNo = 'Yes'
 
-@description('Indicates whether to create a public IP address for head nodes.')
+@description('Indicates whether to create a public IP address for head node.')
 param createPublicIPAddressForHeadNode YesOrNo = 'Yes'
 
 @description('Specify whether to create the Azure VMs with accelerated networking or not. Note accelerated networking is supported only for some VM sizes. If you specify it as \'Yes\', you must specify accelerated networking supported VM sizes for all the VMs in the cluster. More information about accelerated networking please see https://docs.microsoft.com/en-us/azure/virtual-network/create-vm-accelerated-networking-powershell.')
@@ -111,6 +107,12 @@ param useSpotInstanceForComputeNodes YesOrNo = 'No'
 @description('Specify whether you want to install InfiniBandDriver automatically for the VMs with InfiniBand network. This setting is ignored for the VMs without InfiniBand network.')
 param autoInstallInfiniBandDriver YesOrNo = 'Yes'
 
+@description('Specify whether to install InfiniBand driver on the head node. This overrides the autoInstallInfiniBandDriver setting specifically for the head node.')
+param installIBDriverOnHeadNode YesOrNo = 'No'
+
+@description('Specify whether to install InfiniBand driver on the compute nodes. This overrides the autoInstallInfiniBandDriver setting specifically for the compute nodes.')
+param installIBDriverOnComputeNodes YesOrNo = 'Yes'
+
 @secure()
 @description('The AuthenticationKey for Linux nodes. Head nodes must have ClusterAuthenticationKey set in their registry so that it is included in HN\'s request headers to Linux nodes.')
 param authenticationKey string = ''
@@ -119,43 +121,37 @@ param authenticationKey string = ''
 param enableAzureMonitor YesOrNo = 'Yes'
 
 var _enableAzureMonitor = (enableAzureMonitor == 'Yes')
-var dcSize = trim(domainControllerVMSize)
 var _clusterName = trim(clusterName)
+var _virtualNetworkName = trim(virtualNetworkName)
+var _virtualNetworkResourceGroupName = trim(virtualNetworkResourceGroupName)
+var _subnetName = trim(subnetName)
 var _domainName = trim(domainName)
-var _headNodeList = trim(headNodeList)
-var _sqlServerVMName = trim(sqlServerVMName)
+var _domainOUPath = trim(domainOUPath)
 var _computeNodeNamePrefix = trim(computeNodeNamePrefix)
 
 var storageAccountName = 'hpc${uniqueString(resourceGroup().id,_clusterName)}'
 var storageAccountId = storageAccount.id
-var lbName = '${_clusterName}-lb'
-var lbPoolName = 'BackendPool1'
-var addressPrefix = '10.0.0.0/16'
-var subnet1Name = 'Subnet-1'
-var subnet1Prefix = '10.0.0.0/22'
-var _hnNames = split(_headNodeList, ',')
-
-var vNetName = '${_clusterName}vnet'
-var vnetID = vnet.outputs.vNetId
-var subnetRef = '${vnetID}/subnets/${subnet1Name}'
+var vnetID = resourceId(
+  _virtualNetworkResourceGroupName,
+  'Microsoft.Network/virtualNetworks',
+  _virtualNetworkName
+)
+var subnetRef = '${vnetID}/subnets/${_subnetName}'
 var privateClusterFQDN = '${toLower(_clusterName)}.${_domainName}'
-var publicIPSuffix = uniqueString(resourceGroup().id)
-var publicIPName = '${_clusterName}publicip'
-var publicIPDNSNameLabel = '${toLower(_clusterName)}${publicIPSuffix}'
-var _availabilitySetNameHN = '${_clusterName}-avset'
-var cnAvailabilitySetName = '${_computeNodeNamePrefix}avset'
-var nbrVMPerAvailabilitySet = 200
-var cnAvailabilitySetNumber = ((computeNodeNumber / nbrVMPerAvailabilitySet) + 1)
-var dcVMName = '${_clusterName}dc'
-var nsgName = 'hpcnsg-${uniqueString(resourceGroup().id)}'
+var availabilitySetName = '${_clusterName}-avset'
+var nsgName = 'hpcnsg-${uniqueString(resourceGroup().id,subnetRef)}'
 var cnRDMACapable = isRDMACapable(computeNodeVMSize)
 var hnRDMACapable = isRDMACapable(headNodeVMSize)
-var createCNInAVSet = ((computeNodeInAVSet == 'Yes') || ((computeNodeInAVSet == 'Auto') && cnRDMACapable))
-var useVmssForCN = (useVmssForComputeNodes == 'Yes')
 var autoEnableInfiniBand = (autoInstallInfiniBandDriver == 'Yes')
+var installIBDriverOnHN = (installIBDriverOnHeadNode == 'Yes')
+var installIBDriverOnCN = (installIBDriverOnComputeNodes == 'Yes')
+var useVmssForCN = (useVmssForComputeNodes == 'Yes')
+var createHNInAVSet = ((!useVmssForCN) && ((availabilitySetOption == 'AllNodes') || ((availabilitySetOption == 'Auto') && hnRDMACapable)))
+var createCNInAVSet = ((!useVmssForCN) && (((availabilitySetOption == 'AllNodes') || (availabilitySetOption == 'ComputeNodes')) || ((availabilitySetOption == 'Auto') && cnRDMACapable)))
 var vmPriority = ((useSpotInstanceForComputeNodes == 'Yes') ? 'Spot' : 'Regular')
 var computeVmssName = take(replace(_computeNodeNamePrefix, '-', ''), 9)
 var vmssSinglePlacementGroup = (computeNodeNumber <= 100)
+
 var headNodeImageRef = getHeadNodeImageRef(hpcPackRelease, headNodeOS, trim(headNodeImageResourceId))
 var _computeNodeImages = union(windowsComputeNodeImages, {
   CustomImage: {
@@ -163,8 +159,6 @@ var _computeNodeImages = union(windowsComputeNodeImages, {
   }
 })
 var computeNodeImageRef = _computeNodeImages[computeNodeImage]
-
-var SqlDscExtName = 'configSQLServer'
 
 var certSettings = keyVault.outputs.certSettings
 
@@ -189,32 +183,6 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   properties: {}
 }
 
-module vnet 'shared/vnet-with-dc.bicep' = {
-  name: 'createVNetAndDC'
-  params: {
-    adminPassword: adminPassword
-    adminUsername: adminUsername
-    dcSize: dcSize
-    dcVmName: dcVMName
-    domainName: _domainName
-    subnetAddressPrefix: subnet1Prefix
-    subnetName: subnet1Name
-    vNetAddressPrefix: addressPrefix
-    vNetName: vNetName
-  }
-}
-
-module lb 'shared/load-balancer.bicep' = if (createPublicIPAddressForHeadNode == 'Yes') {
-  name: 'createLB'
-  params: {
-    hnNames: _hnNames
-    lbName: lbName
-    lbPoolName: lbPoolName
-    publicIpDnsNameLabel: publicIPDNSNameLabel
-    publicIpName: publicIPName
-  }
-}
-
 module nsg 'shared/nsg.bicep' = if (createPublicIPAddressForHeadNode == 'Yes') {
   name: 'nsg'
   params: {
@@ -222,93 +190,55 @@ module nsg 'shared/nsg.bicep' = if (createPublicIPAddressForHeadNode == 'Yes') {
   }
 }
 
-resource hnAvSet 'Microsoft.Compute/availabilitySets@2023-03-01' = {
-  name: _availabilitySetNameHN
+resource availabilitySet 'Microsoft.Compute/availabilitySets@2023-03-01' = if (createHNInAVSet || createCNInAVSet) {
+  name: availabilitySetName
+  location: resourceGroup().location
   sku: {
     name: 'Aligned'
   }
   properties: {
-    platformUpdateDomainCount: 3
+    platformUpdateDomainCount: 5
     platformFaultDomainCount: 2
   }
-  location: resourceGroup().location
 }
 
-module headNodes 'shared/head-node.bicep' = [
-  for name in _hnNames: {
-    name: name
-    params: {
-      adminPassword: adminPassword
-      adminUsername: adminUsername
-      certSettings: certSettings
-      clusterName: _clusterName
-      createPublicIp: (createPublicIPAddressForHeadNode == 'Yes')
-      domainName: _domainName
-      enableAcceleratedNetworking: (enableAcceleratedNetworking == 'Yes')
-      enableManagedIdentity: (enableManagedIdentityOnHeadNode == 'Yes')
-      hnAvSetName: hnAvSet.name
-      hnDataDiskCount: headNodeDataDiskCount
-      hnDataDiskSize: headNodeDataDiskSize
-      hnDataDiskType: headNodeDataDiskType
-      hnImageRef: headNodeImageRef
-      hnName: name
-      hnOsDiskType: headNodeOsDiskType
-      hnVMSize: headNodeVMSize
-      installIBDriver: hnRDMACapable && autoEnableInfiniBand
-      lbName: lbName
-      lbPoolName: lbPoolName
-      logSettings: _enableAzureMonitor ? monitor.outputs.logSettings : null
-      amaSettings: _enableAzureMonitor ? monitor.outputs.amaSettings : null
-      nsgName: (createPublicIPAddressForHeadNode == 'Yes') ? nsgName : null
-      subnetId: subnetRef
-    }
-    dependsOn: [
-      monitor
-      lb
-      nsg
-      vnet
-    ]
-  }
-]
-
-module sqlServer 'shared/sql-server.bicep' = {
-  name: 'sqlServer'
+module headNode 'shared/head-node.bicep' = {
+  name: _clusterName
   params: {
     adminPassword: adminPassword
     adminUsername: adminUsername
-    availabilitySetName: _availabilitySetNameHN
-    diskType: diskTypes[sqlServerDiskType]
+    certSettings: certSettings
+    clusterName: _clusterName
+    createPublicIp: createPublicIPAddressForHeadNode == 'Yes'
     domainName: _domainName
-    enableAcceleratedNetworking: (enableAcceleratedNetworking == 'Yes')
-    SqlDscExtName: SqlDscExtName
+    domainOUPath: _domainOUPath
+    enableAcceleratedNetworking: enableAcceleratedNetworking == 'Yes'
+    enableManagedIdentity: enableManagedIdentityOnHeadNode == 'Yes'
+    externalVNetName: _virtualNetworkName
+    externalVNetRg: _virtualNetworkResourceGroupName
+    hnAvSetName: createHNInAVSet ? availabilitySet.name : null
+    hnDataDiskCount: headNodeDataDiskCount
+    hnDataDiskSize: headNodeDataDiskSize
+    hnDataDiskType: headNodeDataDiskType
+    hnImageRef: headNodeImageRef
+    hnName: _clusterName
+    hnOsDiskType: headNodeOsDiskType
+    hnVMSize: headNodeVMSize
+    installIBDriver:hnRDMACapable && autoEnableInfiniBand
+    logSettings: _enableAzureMonitor ? monitor.outputs.logSettings : null
+    amaSettings: _enableAzureMonitor ? monitor.outputs.amaSettings : null
+    nsgName: createPublicIPAddressForHeadNode == 'Yes' ? nsgName : null
     subnetId: subnetRef
-    vmName: _sqlServerVMName
-    vmSize: sqlServerVMSize
   }
   dependsOn: [
-    hnAvSet
-    vnet
+    monitor
+    nsg
   ]
 }
 
-module configDBPermissions 'shared/sql-server-config.bicep' = {
-  name: 'configDBPermissions'
-  params: {
-    SqlVmExtName: SqlDscExtName
-    adminPassword: adminPassword
-    adminUsername: adminUsername
-    domainName: _domainName
-    headNodeList: _headNodeList
-    sqlVmName: _sqlServerVMName
-  }
-  dependsOn: [
-    sqlServer
-    headNodes
-  ]
-}
-
-resource setupPrimaryHeadNode 'Microsoft.Compute/virtualMachines/extensions@2023-03-01' = {
-  name: '${_hnNames[0]}/setupPrimaryHeadNode'
+//TODO: Move this into a module
+resource setupHeadNode 'Microsoft.Compute/virtualMachines/extensions@2023-03-01' = {
+  name: '${_clusterName}/setupHpcHeadNode'
   location: resourceGroup().location
   properties: {
     publisher: 'Microsoft.Powershell'
@@ -322,16 +252,14 @@ resource setupPrimaryHeadNode 'Microsoft.Compute/virtualMachines/extensions@2023
         function: 'InstallPrimaryHeadNode'
       }
       configurationArguments: {
-        SSLThumbprint: certSettings.thumbprint
         ClusterName: _clusterName
-        SQLServerInstance: _sqlServerVMName
-        EnableBuiltinHA: true
+        SSLThumbprint: certSettings.thumbprint
         CNSize: computeNodeVMSize
         SubscriptionId: subscription().subscriptionId
-        VNet: vNetName
-        Subnet: subnet1Name
+        VNet: _virtualNetworkName
+        Subnet: _subnetName
         Location: resourceGroup().location
-        ResourceGroup: resourceGroup().name
+        ResourceGroup: _virtualNetworkResourceGroupName
         VaultResourceGroup: certSettings.vaultResourceGroup
         CertificateUrl: certSettings.url
         CNNamePrefix: _computeNodeNamePrefix
@@ -350,62 +278,9 @@ resource setupPrimaryHeadNode 'Microsoft.Compute/virtualMachines/extensions@2023
     }
   }
   dependsOn: [
-    headNodes
-    configDBPermissions
+    headNode
   ]
 }
-
-resource setupSecondaryHeadNode 'Microsoft.Compute/virtualMachines/extensions@2023-03-01' = {
-  name: '${_hnNames[1]}/setupSecondaryHeadNode'
-  location: resourceGroup().location
-  properties: {
-    publisher: 'Microsoft.Powershell'
-    type: 'DSC'
-    typeHandlerVersion: '2.80'
-    autoUpgradeMinorVersion: true
-    settings: {
-      configuration: {
-        url: '${sharedResxBaseUrl}/InstallHpcNode.ps1.zip'
-        script: 'InstallHpcNode.ps1'
-        function: 'InstallHpcNode'
-      }
-      configurationArguments: {
-        NodeType: 'PassiveHeadNode'
-        HeadNodeList: _headNodeList
-        SSLThumbprint: certSettings.thumbprint
-      }
-    }
-    protectedSettings: {
-      configurationArguments: {
-        SetupUserCredential: {
-          UserName: '${_domainName}\\${adminUsername}'
-          Password: adminPassword
-        }
-      }
-    }
-  }
-  dependsOn: [
-    headNodes
-    setupPrimaryHeadNode
-  ]
-}
-
-resource cnAvSet 'Microsoft.Compute/availabilitySets@2023-03-01' = [
-  for i in range(0, cnAvailabilitySetNumber): if (createCNInAVSet) {
-    name: '${cnAvailabilitySetName}${padLeft(string(i), 2, '0')}'
-    location: resourceGroup().location
-    sku: {
-      name: 'Aligned'
-    }
-    properties: {
-      platformUpdateDomainCount: 5
-      platformFaultDomainCount: 2
-    }
-    dependsOn: [
-      vnet
-    ]
-  }
-]
 
 module computeNodes 'shared/compute-node.bicep' = [
   for i in range(0, computeNodeNumber): if (!useVmssForCN) {
@@ -422,22 +297,20 @@ module computeNodes 'shared/compute-node.bicep' = [
       imageOsPlatform: 'windows'
       adminUsername: adminUsername
       adminPassword: adminPassword
-      availabilitySetName: (createCNInAVSet
-        ? '${cnAvailabilitySetName}${padLeft(string((i / nbrVMPerAvailabilitySet)), 2, '0')}'
-        : '')
+      availabilitySetName: (createCNInAVSet ? availabilitySetName : '')
       vmPriority: vmPriority
       installRDMADriver: (cnRDMACapable && autoEnableInfiniBand)
       enableAcceleratedNetworking: (enableAcceleratedNetworking == 'Yes')
       certSettings: certSettings
-      headNodeList: _headNodeList
+      headNodeList: _clusterName
       joinDomain: true
       domainName: _domainName
+      domainOUPath: _domainOUPath
       logSettings: _enableAzureMonitor ? monitor.outputs.logSettings : null
     }
     dependsOn: [
       monitor
-      vnet
-      cnAvSet
+      availabilitySet
     ]
   }
 ]
@@ -462,13 +335,11 @@ module computeVmss 'shared/compute-vmss.bicep' = if ((computeNodeNumber > 0) && 
     installRDMADriver: (cnRDMACapable && autoEnableInfiniBand)
     enableAcceleratedNetworking: (enableAcceleratedNetworking == 'Yes')
     certSettings: certSettings
-    headNodeList: _headNodeList
+    headNodeList: _clusterName
     joinDomain: true
     domainName: _domainName
+    domainOUPath: _domainOUPath
   }
-  dependsOn: [
-    vnet
-  ]
 }
 
-output clusterDNSName string = (createPublicIPAddressForHeadNode == 'No') ? privateClusterFQDN : lb.outputs.fqdn
+output clusterDNSName string = (createPublicIPAddressForHeadNode == 'No') ? privateClusterFQDN : headNode.outputs.fqdn
