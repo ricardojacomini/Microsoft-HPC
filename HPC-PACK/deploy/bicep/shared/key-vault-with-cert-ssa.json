@@ -1,0 +1,361 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.38.33.27573",
+      "templateHash": "8598990764090104960"
+    }
+  },
+  "definitions": {
+    "CertificateSettings": {
+      "type": "object",
+      "properties": {
+        "vaultResourceGroup": {
+          "type": "string"
+        },
+        "vaultName": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "thumbprint": {
+          "type": "string"
+        }
+      },
+      "metadata": {
+        "__bicep_imported_from!": {
+          "sourceTemplate": "types-and-vars.bicep"
+        }
+      }
+    }
+  },
+  "parameters": {
+    "vaultNamePrefix": {
+      "type": "string",
+      "nullable": true
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "certOfficerPrincipalId": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "storageAccountName": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "certName": {
+      "type": "string",
+      "defaultValue": "newCert"
+    },
+    "commonName": {
+      "type": "string",
+      "defaultValue": "HPC Pack Node Communication"
+    },
+    "primaryScriptUri": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "If provided, a pre-generated blob URL (including SAS token) that points to KeyVaultCertificate.ps1"
+      }
+    },
+    "supportingScriptUris": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Optional array of supporting script URIs (zip files or additional scripts) available to the deployment script"
+      }
+    },
+    "containerName": {
+      "type": "string",
+      "defaultValue": "scripts",
+      "metadata": {
+        "description": "Name of the storage container where supporting scripts and zips are uploaded (default: scripts)"
+      }
+    },
+    "storageAccountKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional storage account key (base64). If you can provide a storage account key, the deploymentScript can use it to write outputs. Note: passing a user-delegation SAS in storageAccountSettings is not supported by the current schema; primaryScriptUri can include a SAS for script download but outputs typically require account key. If you cannot supply a key, consider creating the certificate natively or running the script from CI/pipeline."
+      }
+    }
+  },
+  "variables": {
+    "$fxv#0": "<#\r\n.Synopsis\r\n    Create or import a new Azure Key Vault Certificate for HPC Pack Cluster\r\n\r\n.DESCRIPTION\r\n    This script creates or imports an Azure Key Vault certificate used by the HPC Pack Cluster deployment.\r\n    It will create the resource group and Key Vault if they do not exist.\r\n    The script is safe to run under user, service principal, or managed identity contexts. It emits a compact JSON\r\n    object with 'thumbprint' and 'url' for use with Deployment Scripts.\r\n#>\r\n[CmdletBinding(DefaultParameterSetName = 'CreateNewCertificate')]\r\nparam(\r\n    [Parameter(Mandatory = $true)]\r\n    [string] $VaultName,\r\n\r\n    [Parameter(Mandatory = $true)]\r\n    [string] $Name,\r\n\r\n    [Parameter(Mandatory = $true)]\r\n    [string] $ResourceGroup,\r\n\r\n    [Parameter(Mandatory = $true)]\r\n    [string] $Location,\r\n\r\n    [Parameter(Mandatory = $false)]\r\n    [string] $Subscription = '',\r\n\r\n    [Parameter(Mandatory = $false)]\r\n    [string] $CommonName = 'HPC Pack Node Communication',\r\n\r\n    [Parameter(Mandatory = $true, ParameterSetName = 'ImportPfxCertificate')]\r\n    [string] $PfxFilePath,\r\n\r\n    [Parameter(Mandatory = $true, ParameterSetName = 'ImportPfxCertificate')]\r\n    [System.Security.SecureString] $Password\r\n)\r\n\r\nWrite-Host \"Validating input parameters...\" -ForegroundColor Green\r\n[System.Net.ServicePointManager]::SecurityProtocol = 'tls,tls11,tls12'\r\n$azContext = Get-AzContext -ErrorAction Stop\r\nif ($Subscription) {\r\n    if (($azContext.Subscription.Name -ne $Subscription) -and ($azContext.Subscription.Id -ne $Subscription)) {\r\n        Set-AzContext -Subscription $Subscription -ErrorAction Stop\r\n    }\r\n} else {\r\n    Write-Verbose \"No subscription specified; using current subscription $($azContext.Subscription.Name)\"\r\n}\r\n\r\nif ($PfxFilePath) {\r\n    try { $pfxCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList $PfxFilePath, $Password } \r\n    catch [System.Management.Automation.MethodInvocationException] { throw $_.Exception.InnerException }\r\n    $pfxCert.Dispose()\r\n}\r\n\r\n# Normalize location early: remove whitespace and convert to lowercase\r\n$Location = ($Location -replace '\\s+', '').ToLower()\r\n\r\n# Ensure resource group\r\n$rg = Get-AzResourceGroup -Name $ResourceGroup -Location $Location -ErrorAction SilentlyContinue\r\nif ($null -eq $rg) {\r\n    Write-Host \"Creating resource group '$ResourceGroup' in location '$Location'\" -ForegroundColor Green\r\n    $rg = New-AzResourceGroup -Name $ResourceGroup -Location $Location\r\n}\r\n\r\n# Ensure Key Vault\r\n$keyVault = Get-AzKeyVault -VaultName $VaultName -ErrorAction SilentlyContinue\r\nif ($keyVault) {\r\n    Write-Host \"Key Vault '$VaultName' already exists.\" -ForegroundColor Green\r\n    if ($keyVault.Location -ne $Location) { throw \"The Key Vault '$VaultName' exists in another location ($($keyVault.Location)).\" }\r\n    if ($keyVault.ResourceGroupName -ne $ResourceGroup) { throw \"The Key Vault '$VaultName' exists in another resource group ($($keyVault.ResourceGroupName)).\" }\r\n    if (-not $keyVault.EnabledForDeployment -or -not $keyVault.EnabledForTemplateDeployment) {\r\n        Write-Host \"Enabling EnabledForDeployment and EnabledForTemplateDeployment for Key Vault '$VaultName'\" -ForegroundColor Green\r\n        Set-AzKeyVaultAccessPolicy -VaultName $VaultName -EnabledForDeployment -EnabledForTemplateDeployment -ErrorAction Stop\r\n    }\r\n} else {\r\n    Write-Host \"Creating Key Vault '$VaultName' in resource group '$ResourceGroup'\" -ForegroundColor Green\r\n    $keyVault = New-AzKeyVault -Name $VaultName -ResourceGroupName $ResourceGroup -Location $Location -EnabledForDeployment -EnabledForTemplateDeployment -ErrorAction Stop\r\n}\r\n\r\nif ($PSBoundParameters.ContainsKey('PfxFilePath')) {\r\n    Write-Host \"Importing PFX certificate to Key Vault '$VaultName' as '$Name'\" -ForegroundColor Green\r\n    $keyVaultCert = Import-AzKeyVaultCertificate -VaultName $VaultName -Name $Name -FilePath $PfxFilePath -Password $Password -ErrorAction Stop\r\n} else {\r\n    if ($CommonName.StartsWith('CN=')) { $subjectName = $CommonName } else { $subjectName = \"CN=$CommonName\" }\r\n    Write-Host \"Creating self-signed certificate '$Name' in Key Vault '$VaultName' (subject $subjectName)\" -ForegroundColor Green\r\n    $certPolicy = New-AzKeyVaultCertificatePolicy -SecretContentType 'application/x-pkcs12' -SubjectName $subjectName -IssuerName 'Self' -ValidityInMonths 60 -ReuseKeyOnRenewal -KeyUsage DigitalSignature, KeyAgreement, KeyEncipherment -Ekus '1.3.6.1.5.5.7.3.1','1.3.6.1.5.5.7.3.2'\r\n\r\n    # Retry Add-AzKeyVaultCertificate to tolerate RBAC propagation delays\r\n    $retryCount = 0\r\n    do {\r\n        try {\r\n            $null = Add-AzKeyVaultCertificate -VaultName $VaultName -Name $Name -CertificatePolicy $certPolicy -ErrorAction Stop\r\n            break\r\n        } catch {\r\n            if ($retryCount -ge 5) { throw $_ }\r\n            Write-Verbose \"Add-AzKeyVaultCertificate failed; retrying in 10s (attempt $($retryCount + 1) of 6)\"\r\n            Start-Sleep -Seconds 10\r\n            $retryCount++\r\n        }\r\n    } while ($true)\r\n    Write-Host 'Waiting for the certificate to be provisioned...' -ForegroundColor Green\r\n    Start-Sleep -Seconds 5\r\n    $keyVaultCert = Get-AzKeyVaultCertificate -VaultName $VaultName -Name $Name\r\n    while (!$keyVaultCert.Thumbprint -or -not $keyVaultCert.SecretId) {\r\n        Start-Sleep -Seconds 2\r\n        $keyVaultCert = Get-AzKeyVaultCertificate -VaultName $VaultName -Name $Name\r\n    }\r\n}\r\n\r\nWrite-Host \"Certificate created/imported. Emitting compact JSON output (thumbprint + url).\" -ForegroundColor Yellow\r\n\"Vault Name           : $VaultName\"\r\n\"Vault Resource Group : $ResourceGroup\"\r\n\"Certificate URL      : $($keyVaultCert.SecretId)\"\r\n\"Cert Thumbprint      : $($keyVaultCert.Thumbprint)\"\r\n\r\n$DeploymentScriptOutputs = @{ thumbprint = $keyVaultCert.Thumbprint; url = $keyVaultCert.SecretId }\r\n$DeploymentScriptOutputs | ConvertTo-Json -Compress | Write-Output",
+    "suffix": "[uniqueString(resourceGroup().id)]",
+    "containerGroupSuffix": "[if(greater(length(variables('suffix')), 0), substring(variables('suffix'), 0, 13), 'x')]",
+    "prefix": "[coalesce(parameters('vaultNamePrefix'), format('{0}-kv', resourceGroup().name))]",
+    "vaultCandidateRaw": "[take(format('{0}-{1}', variables('prefix'), variables('suffix')), 24)]",
+    "vaultCandidateTrimmed": "[if(endsWith(variables('vaultCandidateRaw'), '-'), substring(variables('vaultCandidateRaw'), 0, sub(length(variables('vaultCandidateRaw')), 1)), variables('vaultCandidateRaw'))]",
+    "vaultCandidateNoDouble": "[replace(variables('vaultCandidateTrimmed'), '--', '-')]",
+    "vaultName": "[toLower(variables('vaultCandidateNoDouble'))]",
+    "rgName": "[resourceGroup().name]",
+    "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
+  },
+  "resources": {
+    "keyVault": {
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2024-04-01-preview",
+      "name": "[variables('vaultName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "name": "standard",
+          "family": "A"
+        },
+        "tenantId": "[tenant().tenantId]",
+        "accessPolicies": [],
+        "enabledForDeployment": true,
+        "enabledForDiskEncryption": true,
+        "enabledForTemplateDeployment": true,
+        "enableSoftDelete": true,
+        "softDeleteRetentionInDays": 90,
+        "enableRbacAuthorization": true,
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    "userMiForNewCert": {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "userMiForNewCert",
+      "location": "[parameters('location')]"
+    },
+    "storageAccountExisting": {
+      "condition": "[not(equals(parameters('storageAccountName'), ''))]",
+      "existing": true,
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[parameters('storageAccountName')]"
+    },
+    "assignStorageBlobContributor": {
+      "condition": "[not(equals(parameters('storageAccountName'), ''))]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('storageAccountName'))]",
+      "name": "[guid(resourceGroup().id, resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'userMiForNewCert'), variables('storageBlobDataContributorRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
+        "principalId": "[reference('userMiForNewCert').principalId]"
+      },
+      "dependsOn": [
+        "userMiForNewCert"
+      ]
+    },
+    "newCertOfficer": {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2023-08-01",
+      "name": "newCertKeyVaultCertificatesOfficer",
+      "location": "[parameters('location')]",
+      "kind": "AzurePowerShell",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'userMiForNewCert'))]": {}
+        }
+      },
+      "properties": {
+        "azPowerShellVersion": "11.0",
+        "cleanupPreference": "OnExpiration",
+        "retentionInterval": "PT1H",
+        "scriptContent": "[variables('$fxv#0')]",
+        "arguments": "[format('-VaultName {0} -Name {1} -ResourceGroup {2} -Location {3} -CommonName \"{4}\"', variables('vaultName'), parameters('certName'), variables('rgName'), parameters('location'), parameters('commonName'))]"
+      },
+      "dependsOn": [
+        "assignKeyVaultAdmin",
+        "assignKeyVaultCertificatesOfficer",
+        "assignStorageBlobContributor",
+        "userMiForNewCert"
+      ]
+    },
+    "assignKeyVaultAdmin": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "assignKeyVaultAdmin",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "keyVaultName": {
+            "value": "[variables('vaultName')]"
+          },
+          "principalId": {
+            "value": "[reference('userMiForNewCert').principalId]"
+          },
+          "roleDefinitionId": {
+            "value": "00482a5a-887f-4fb3-b363-3b7fe8e74483"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.38.33.27573",
+              "templateHash": "3911838156657820657"
+            }
+          },
+          "parameters": {
+            "keyVaultName": {
+              "type": "string"
+            },
+            "principalId": {
+              "type": "string"
+            },
+            "roleDefinitionId": {
+              "type": "string",
+              "defaultValue": "f25e0fa2-a7c8-4377-a976-54943a77a395"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('keyVaultName'))]",
+              "name": "[guid(resourceGroup().id, parameters('keyVaultName'), parameters('principalId'), parameters('roleDefinitionId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "keyVault",
+        "userMiForNewCert"
+      ]
+    },
+    "assignKeyVaultCertificatesOfficer": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "assignKeyVaultCertificatesOfficer",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "keyVaultName": {
+            "value": "[variables('vaultName')]"
+          },
+          "principalId": "[if(empty(parameters('certOfficerPrincipalId')), createObject('value', reference('userMiForNewCert').principalId), createObject('value', parameters('certOfficerPrincipalId')))]",
+          "roleDefinitionId": {
+            "value": "a4417e6f-fecd-4de8-b567-7b0420556985"
+          },
+          "principalType": {
+            "value": ""
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.38.33.27573",
+              "templateHash": "5319949219633163226"
+            }
+          },
+          "parameters": {
+            "keyVaultName": {
+              "type": "string"
+            },
+            "principalId": {
+              "type": "string"
+            },
+            "roleDefinitionId": {
+              "type": "string",
+              "defaultValue": "f25e0fa2-a7c8-4377-a976-54943a77a395"
+            },
+            "principalType": {
+              "type": "string",
+              "defaultValue": ""
+            }
+          },
+          "variables": {
+            "roleAssignmentProperties": "[union(createObject('roleDefinitionId', subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId')), 'principalId', parameters('principalId')), if(not(equals(parameters('principalType'), '')), createObject('principalType', parameters('principalType')), createObject()))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('keyVaultName'))]",
+              "name": "[guid(resourceGroup().id, parameters('keyVaultName'), parameters('principalId'), parameters('roleDefinitionId'))]",
+              "properties": "[variables('roleAssignmentProperties')]"
+            }
+          ],
+          "outputs": {
+            "roleAssignmentId": {
+              "type": "string",
+              "value": "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, parameters('keyVaultName'), parameters('principalId'), parameters('roleDefinitionId')))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "keyVault",
+        "userMiForNewCert"
+      ]
+    },
+    "enforcePrimaryScriptOrKeyModule": {
+      "condition": "[and(equals(parameters('primaryScriptUri'), ''), equals(parameters('storageAccountKey'), ''))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "enforcePrimaryScriptOrKeyModule",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.38.33.27573",
+              "templateHash": "2775079699385178391"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.NonExistentProvider/forceFail",
+              "apiVersion": "2020-01-01",
+              "name": "forceFailure",
+              "properties": {}
+            }
+          ]
+        }
+      }
+    }
+  },
+  "outputs": {
+    "certSettings": {
+      "$ref": "#/definitions/CertificateSettings",
+      "value": {
+        "thumbprint": "[reference('newCertOfficer').outputs.thumbprint]",
+        "url": "[reference('newCertOfficer').outputs.url]",
+        "vaultName": "[variables('vaultName')]",
+        "vaultResourceGroup": "[variables('rgName')]"
+      }
+    },
+    "deploymentScriptHint": {
+      "type": "object",
+      "value": {
+        "primaryScriptUriProvided": "[not(equals(parameters('primaryScriptUri'), ''))]",
+        "advice": "[if(equals(parameters('primaryScriptUri'), ''), 'No primaryScriptUri provided; ensure you either supply a storageAccountKey at deployment time or use a native key vault certificate/CI workflow.', 'ok')]"
+      }
+    }
+  }
+}
