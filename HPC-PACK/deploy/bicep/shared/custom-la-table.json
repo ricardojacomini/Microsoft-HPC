@@ -1,0 +1,88 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.38.33.27573",
+      "templateHash": "4403161509641157471"
+    }
+  },
+  "parameters": {
+    "prefix": {
+      "type": "string"
+    },
+    "workSpaceName": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "primaryScriptUri": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional pre-hosted script URI (including SAS) to use instead of inlining the script content"
+      }
+    },
+    "supportingScriptUris": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Optional array of supporting script URIs (zip files or additional scripts)"
+      }
+    }
+  },
+  "variables": {
+    "$fxv#0": "param(\r\n  [string] $workSpaceResId\r\n)\r\n\r\n$ErrorActionPreference = 'Stop'\r\n\r\n# NOTE: The column \"TimeGenerated\" is mandatory. Do not change the name and type.\r\n$tableParams = @'\r\n{\r\n  \"properties\": {\r\n    \"schema\": {\r\n      \"name\": \"TraceListener_CL\",\r\n      \"columns\": [\r\n        {\r\n          \"name\": \"TimeGenerated\",\r\n          \"type\": \"datetime\",\r\n          \"description\": \"The time at which the log was generated\"\r\n        },\r\n        {\r\n          \"name\": \"ComputerName\",\r\n          \"type\": \"string\",\r\n          \"description\": \"The name of the computer that generated the log\"\r\n        },\r\n        {\r\n          \"name\": \"ProcessName\",\r\n          \"type\": \"string\",\r\n          \"description\": \"The name of the process that generated the log\"\r\n        },\r\n        {\r\n          \"name\": \"ProcessId\",\r\n          \"type\": \"int\",\r\n          \"description\": \"The id of the process that generated the log\"\r\n        },\r\n        {\r\n          \"name\": \"EventType\",\r\n          \"type\": \"string\",\r\n          \"description\": \"Log event type, such as error, info, etc.\"\r\n        },\r\n        {\r\n          \"name\": \"EventId\",\r\n          \"type\": \"int\",\r\n          \"description\": \"Log event id\"\r\n        },\r\n        {\r\n          \"name\": \"Source\",\r\n          \"type\": \"string\",\r\n          \"description\": \"Log source\"\r\n        },\r\n        {\r\n          \"name\": \"Content\",\r\n          \"type\": \"string\",\r\n          \"description\": \"Log content\"\r\n        }\r\n      ]\r\n    }\r\n  }\r\n}\r\n'@\r\n\r\n# TODO: Fail the script on failed HTTP request!\r\nInvoke-AzRestMethod -Path \"$workSpaceResId/tables/TraceListener_CL?api-version=2022-10-01\" -Method PUT -payload $tableParams"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[format('{0}userMiForScript', parameters('prefix'))]",
+      "location": "[parameters('location')]"
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('workSpaceName'))]",
+      "name": "[guid(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))), 'Contributor')]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2023-08-01",
+      "name": "[format('{0}createTable', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "kind": "AzurePowerShell",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))))]": {}
+        }
+      },
+      "properties": {
+        "azPowerShellVersion": "11.0",
+        "cleanupPreference": "OnExpiration",
+        "retentionInterval": "PT1H",
+        "scriptContent": "[if(equals(parameters('primaryScriptUri'), ''), variables('$fxv#0'), '')]",
+        "primaryScriptUri": "[parameters('primaryScriptUri')]",
+        "supportingScriptUris": "[if(greater(length(parameters('supportingScriptUris')), 0), parameters('supportingScriptUris'), createArray())]",
+        "arguments": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workSpaceName'))]"
+      },
+      "dependsOn": [
+        "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workSpaceName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))), 'Contributor'))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix')))]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,226 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.38.33.27573",
+      "templateHash": "10285930495352052665"
+    }
+  },
+  "parameters": {
+    "vaultNamePrefix": {
+      "type": "string",
+      "defaultValue": "hpcpack-kv",
+      "metadata": {
+        "description": "Prefix for Key Vault name"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure location for resources"
+      }
+    },
+    "certName": {
+      "type": "string",
+      "defaultValue": "hpcCert",
+      "metadata": {
+        "description": "Certificate name in Key Vault"
+      }
+    },
+    "commonName": {
+      "type": "string",
+      "defaultValue": "HPC Pack Node Communication",
+      "metadata": {
+        "description": "Common Name for certificate subject"
+      }
+    },
+    "clusterName": {
+      "type": "string",
+      "defaultValue": "hpcpack-cluster",
+      "metadata": {
+        "description": "HPC Pack cluster name"
+      }
+    },
+    "headNodeSize": {
+      "type": "string",
+      "defaultValue": "Standard_D4s_v5",
+      "metadata": {
+        "description": "Head node VM size"
+      }
+    },
+    "computeNodeSize": {
+      "type": "string",
+      "defaultValue": "Standard_D4s_v5",
+      "metadata": {
+        "description": "Compute node VM size"
+      }
+    },
+    "computeNodeCount": {
+      "type": "int",
+      "defaultValue": 2,
+      "metadata": {
+        "description": "Number of compute nodes"
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "hpcadmin",
+      "metadata": {
+        "description": "Admin username for cluster nodes"
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Admin password for cluster nodes"
+      }
+    },
+    "certOfficerPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional ObjectId for Certificates Officer role. If empty, fallback to managed identity."
+      }
+    }
+  },
+  "variables": {
+    "suffix": "[uniqueString(resourceGroup().id)]",
+    "vaultName": "[toLower(take(format('{0}-{1}', parameters('vaultNamePrefix'), variables('suffix')), 24))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2024-04-01-preview",
+      "name": "[variables('vaultName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "name": "standard",
+          "family": "A"
+        },
+        "tenantId": "[tenant().tenantId]",
+        "accessPolicies": [],
+        "enabledForDeployment": true,
+        "enabledForDiskEncryption": true,
+        "enabledForTemplateDeployment": true,
+        "enableSoftDelete": true,
+        "softDeleteRetentionInDays": 90,
+        "enableRbacAuthorization": true,
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.KeyVault/vaults/{0}', variables('vaultName'))]",
+      "name": "[guid(resourceGroup().id, variables('vaultName'), parameters('certOfficerPrincipalId'), 'a4417e6f-fecd-4de8-b567-7b0420556985')]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a4417e6f-fecd-4de8-b567-7b0420556985')]",
+        "principalId": "[if(greater(length(parameters('certOfficerPrincipalId')), 0), parameters('certOfficerPrincipalId'), reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'userMiForNewCert'), '2023-01-31').principalId)]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('vaultName'))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'userMiForNewCert')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "userMiForNewCert",
+      "location": "[parameters('location')]"
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/certificates",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/{1}', variables('vaultName'), parameters('certName'))]",
+      "properties": {
+        "certificatePolicy": {
+          "issuerParameters": {
+            "name": "Self"
+          },
+          "keyProperties": {
+            "exportable": true,
+            "keyType": "RSA",
+            "keySize": 2048,
+            "reuseKey": true
+          },
+          "secretProperties": {
+            "contentType": "application/x-pkcs12"
+          },
+          "x509CertificateProperties": {
+            "subject": "[format('CN={0}', parameters('commonName'))]",
+            "validityInMonths": 60,
+            "ekus": [
+              "1.3.6.1.5.5.7.3.1",
+              "1.3.6.1.5.5.7.3.2"
+            ],
+            "keyUsage": [
+              "digitalSignature",
+              "keyEncipherment",
+              "keyAgreement"
+            ]
+          }
+        },
+        "certificateAttributes": {
+          "enabled": true
+        },
+        "lifetimeActions": [
+          {
+            "trigger": {
+              "daysBeforeExpiry": 30
+            },
+            "action": {
+              "actionType": "AutoRenew"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', variables('vaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, variables('vaultName'), parameters('certOfficerPrincipalId'), 'a4417e6f-fecd-4de8-b567-7b0420556985'))]",
+        "[resourceId('Microsoft.KeyVault/vaults', variables('vaultName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.HPC/cluster",
+      "apiVersion": "2024-01-01",
+      "name": "[parameters('clusterName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "headNode": {
+          "vmSize": "[parameters('headNodeSize')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]"
+        },
+        "computeNodes": [
+          {
+            "count": "[parameters('computeNodeCount')]",
+            "vmSize": "[parameters('computeNodeSize')]"
+          }
+        ],
+        "nodeCommunicationCertificate": {
+          "sourceVault": {
+            "id": "[resourceId('Microsoft.KeyVault/vaults', variables('vaultName'))]"
+          },
+          "certificateUrl": "[reference(resourceId('Microsoft.KeyVault/vaults/certificates', variables('vaultName'), parameters('certName')), '2023-07-01').secretId]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('vaultName'))]",
+        "[resourceId('Microsoft.KeyVault/vaults/certificates', variables('vaultName'), parameters('certName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "clusterInfo": {
+      "type": "object",
+      "value": {
+        "clusterName": "[parameters('clusterName')]",
+        "certificateUrl": "[reference(resourceId('Microsoft.KeyVault/vaults/certificates', variables('vaultName'), parameters('certName')), '2023-07-01').secretId]",
+        "vaultName": "[variables('vaultName')]"
+      }
+    }
+  }
+}

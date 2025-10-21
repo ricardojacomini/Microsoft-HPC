@@ -1,0 +1,359 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.38.33.27573",
+      "templateHash": "1717498976264567970"
+    }
+  },
+  "parameters": {
+    "workSpaceName": {
+      "type": "string"
+    },
+    "prefix": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "primaryScriptUri": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional pre-hosted script URI (including SAS) to use for custom table creation"
+      }
+    },
+    "supportingScriptUris": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Optional array of supporting script URIs (zip files or additional scripts)"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/dataCollectionEndpoints",
+      "apiVersion": "2023-03-11",
+      "name": "[format('{0}LogDce', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[format('{0}LogUserMi', parameters('prefix'))]",
+      "location": "[parameters('location')]"
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}LogTable', parameters('prefix'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "prefix": {
+            "value": "[parameters('prefix')]"
+          },
+          "workSpaceName": {
+            "value": "[parameters('workSpaceName')]"
+          },
+          "primaryScriptUri": {
+            "value": "[parameters('primaryScriptUri')]"
+          },
+          "supportingScriptUris": {
+            "value": "[parameters('supportingScriptUris')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.38.33.27573",
+              "templateHash": "4403161509641157471"
+            }
+          },
+          "parameters": {
+            "prefix": {
+              "type": "string"
+            },
+            "workSpaceName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "primaryScriptUri": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Optional pre-hosted script URI (including SAS) to use instead of inlining the script content"
+              }
+            },
+            "supportingScriptUris": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Optional array of supporting script URIs (zip files or additional scripts)"
+              }
+            }
+          },
+          "variables": {
+            "$fxv#0": "param(\r\n  [string] $workSpaceResId\r\n)\r\n\r\n$ErrorActionPreference = 'Stop'\r\n\r\n# NOTE: The column \"TimeGenerated\" is mandatory. Do not change the name and type.\r\n$tableParams = @'\r\n{\r\n  \"properties\": {\r\n    \"schema\": {\r\n      \"name\": \"TraceListener_CL\",\r\n      \"columns\": [\r\n        {\r\n          \"name\": \"TimeGenerated\",\r\n          \"type\": \"datetime\",\r\n          \"description\": \"The time at which the log was generated\"\r\n        },\r\n        {\r\n          \"name\": \"ComputerName\",\r\n          \"type\": \"string\",\r\n          \"description\": \"The name of the computer that generated the log\"\r\n        },\r\n        {\r\n          \"name\": \"ProcessName\",\r\n          \"type\": \"string\",\r\n          \"description\": \"The name of the process that generated the log\"\r\n        },\r\n        {\r\n          \"name\": \"ProcessId\",\r\n          \"type\": \"int\",\r\n          \"description\": \"The id of the process that generated the log\"\r\n        },\r\n        {\r\n          \"name\": \"EventType\",\r\n          \"type\": \"string\",\r\n          \"description\": \"Log event type, such as error, info, etc.\"\r\n        },\r\n        {\r\n          \"name\": \"EventId\",\r\n          \"type\": \"int\",\r\n          \"description\": \"Log event id\"\r\n        },\r\n        {\r\n          \"name\": \"Source\",\r\n          \"type\": \"string\",\r\n          \"description\": \"Log source\"\r\n        },\r\n        {\r\n          \"name\": \"Content\",\r\n          \"type\": \"string\",\r\n          \"description\": \"Log content\"\r\n        }\r\n      ]\r\n    }\r\n  }\r\n}\r\n'@\r\n\r\n# TODO: Fail the script on failed HTTP request!\r\nInvoke-AzRestMethod -Path \"$workSpaceResId/tables/TraceListener_CL?api-version=2022-10-01\" -Method PUT -payload $tableParams"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[format('{0}userMiForScript', parameters('prefix'))]",
+              "location": "[parameters('location')]"
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('workSpaceName'))]",
+              "name": "[guid(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))), 'Contributor')]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deploymentScripts",
+              "apiVersion": "2023-08-01",
+              "name": "[format('{0}createTable', parameters('prefix'))]",
+              "location": "[parameters('location')]",
+              "kind": "AzurePowerShell",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))))]": {}
+                }
+              },
+              "properties": {
+                "azPowerShellVersion": "11.0",
+                "cleanupPreference": "OnExpiration",
+                "retentionInterval": "PT1H",
+                "scriptContent": "[if(equals(parameters('primaryScriptUri'), ''), variables('$fxv#0'), '')]",
+                "primaryScriptUri": "[parameters('primaryScriptUri')]",
+                "supportingScriptUris": "[if(greater(length(parameters('supportingScriptUris')), 0), parameters('supportingScriptUris'), createArray())]",
+                "arguments": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workSpaceName'))]"
+              },
+              "dependsOn": [
+                "[extensionResourceId(resourceId('Microsoft.OperationalInsights/workspaces', parameters('workSpaceName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix'))), 'Contributor'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}userMiForScript', parameters('prefix')))]"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('{0}LogDcr', parameters('prefix'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "dataCollectionRuleName": {
+            "value": "[format('{0}dcrLogIngestionApi', parameters('prefix'))]"
+          },
+          "workspaceResId": {
+            "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workSpaceName'))]"
+          },
+          "dataCollectionEndpointId": {
+            "value": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('{0}LogDce', parameters('prefix')))]"
+          },
+          "userMiPrincipalIds": {
+            "value": [
+              "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}LogUserMi', parameters('prefix'))), '2023-01-31').principalId]"
+            ]
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.38.33.27573",
+              "templateHash": "16513725902265751330"
+            }
+          },
+          "parameters": {
+            "dataCollectionRuleName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "workspaceResId": {
+              "type": "string"
+            },
+            "dataCollectionEndpointId": {
+              "type": "string",
+              "nullable": true
+            },
+            "userMiPrincipalIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "defaultValue": []
+            }
+          },
+          "variables": {
+            "dcrStreamName": "Custom-TraceListener"
+          },
+          "resources": {
+            "logIngestionDcr": {
+              "type": "Microsoft.Insights/dataCollectionRules",
+              "apiVersion": "2023-03-11",
+              "name": "[parameters('dataCollectionRuleName')]",
+              "location": "[parameters('location')]",
+              "kind": "Direct",
+              "properties": {
+                "dataCollectionEndpointId": "[parameters('dataCollectionEndpointId')]",
+                "streamDeclarations": {
+                  "[format('{0}', variables('dcrStreamName'))]": {
+                    "columns": [
+                      {
+                        "name": "Time",
+                        "type": "datetime"
+                      },
+                      {
+                        "name": "ComputerName",
+                        "type": "string"
+                      },
+                      {
+                        "name": "ProcessName",
+                        "type": "string"
+                      },
+                      {
+                        "name": "ProcessId",
+                        "type": "int"
+                      },
+                      {
+                        "name": "EventType",
+                        "type": "string"
+                      },
+                      {
+                        "name": "Id",
+                        "type": "int"
+                      },
+                      {
+                        "name": "Source",
+                        "type": "string"
+                      },
+                      {
+                        "name": "Content",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "destinations": {
+                  "logAnalytics": [
+                    {
+                      "workspaceResourceId": "[parameters('workspaceResId')]",
+                      "name": "myworkspace"
+                    }
+                  ]
+                },
+                "dataFlows": [
+                  {
+                    "streams": [
+                      "[variables('dcrStreamName')]"
+                    ],
+                    "destinations": [
+                      "myworkspace"
+                    ],
+                    "transformKql": "source | project TimeGenerated = Time, ComputerName, ProcessName, ProcessId, EventType, EventId = Id, Source, Content",
+                    "outputStream": "Custom-TraceListener_CL"
+                  }
+                ]
+              }
+            },
+            "roleAssignment": {
+              "copy": {
+                "name": "roleAssignment",
+                "count": "[length(parameters('userMiPrincipalIds'))]"
+              },
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.Insights/dataCollectionRules/{0}', parameters('dataCollectionRuleName'))]",
+              "name": "[guid(parameters('userMiPrincipalIds')[copyIndex()], 'Monitoring Metrics Publisher')]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '3913510d-42f4-4e42-8a64-420c390055eb')]",
+                "principalId": "[parameters('userMiPrincipalIds')[copyIndex()]]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "logIngestionDcr"
+              ]
+            }
+          },
+          "outputs": {
+            "dcrResId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dataCollectionRuleName'))]"
+            },
+            "dcrRunId": {
+              "type": "string",
+              "value": "[reference('logIngestionDcr').immutableId]"
+            },
+            "dcrStreamName": {
+              "type": "string",
+              "value": "[variables('dcrStreamName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('{0}LogTable', parameters('prefix')))]",
+        "[resourceId('Microsoft.Insights/dataCollectionEndpoints', format('{0}LogDce', parameters('prefix')))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}LogUserMi', parameters('prefix')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "logsIngestionEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Insights/dataCollectionEndpoints', format('{0}LogDce', parameters('prefix'))), '2023-03-11').logsIngestion.endpoint]"
+    },
+    "dcrRunId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', format('{0}LogDcr', parameters('prefix'))), '2025-04-01').outputs.dcrRunId.value]"
+    },
+    "dcrStreamName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', format('{0}LogDcr', parameters('prefix'))), '2025-04-01').outputs.dcrStreamName.value]"
+    },
+    "userMiResId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}LogUserMi', parameters('prefix')))]"
+    },
+    "userMiClientId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}LogUserMi', parameters('prefix'))), '2023-01-31').clientId]"
+    }
+  }
+}
