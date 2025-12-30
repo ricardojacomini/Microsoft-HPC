@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 echo "Deployment required CycleCloud and Storage Account"
@@ -9,7 +8,7 @@ cd "$(dirname "$0")" || { echo "ERROR: Failed to change directory to script loca
 unset NAME
 
 # Allow LOCATION, NAME, RESOURCE_GROUP as named or positional parameters
-DEFAULT_LOCATION="canadacentral" # West US
+DEFAULT_LOCATION="EastUS" # East US
 DEFAULT_NAME="Jacomini"    # Set Name to identify your User here
 DEFAULT_RESOURCE_GROUP="HPC-CC-$DEFAULT_LOCATION-$DEFAULT_NAME"  # Set RESOURCE GROUP name here
 
@@ -187,11 +186,14 @@ if ! command -v jq &> /dev/null; then
   exit 1
 fi
 
-# Validate role.json existence
+# Validate role.json existence and log its contents
 if [ ! -f "role.json" ]; then
   echo "ERROR: role.json file not found in current directory. Exiting."
   rm -f "$TMPFILE"
   exit 1
+else
+  echo "role.json file found. Contents:"  # Log the contents of role.json for debugging
+  cat role.json
 fi
 
 # Ensure temp file is cleaned up on exit
@@ -211,6 +213,11 @@ else
     echo "Custom role '$ROLE' created successfully."
   else
     echo -e "ERROR: Failed to create custom role '$ROLE'. Exiting. \n"
+    echo "Debugging information:"
+    echo "Subscription: $SBC"
+    echo "Role Name: $ROLE"
+    echo "Role Definition File Contents:"
+    cat "$TMPFILE"
     rm "$TMPFILE"
     exit 1
   fi
@@ -249,11 +256,30 @@ IDENTITY_ID=$(az identity show \
   --output tsv)
 
 # Assign the custom role to the identity with proper scope
-az role assignment create \
+if az role assignment create \
   --role "$ROLE" \
-  --assignee-object-id $IDENTITY_ID \
+  --assignee-object-id "$IDENTITY_ID" \
   --assignee-principal-type ServicePrincipal \
-  --scope /subscriptions/$SBC
+  --scope /subscriptions/$SBC; then
+  echo "Role assignment for '$ROLE' to identity '$IDENTITY_ID' was successful."
+else
+  echo "ERROR: Failed to assign role '$ROLE' to identity '$IDENTITY_ID'."
+  echo "Debugging information:"
+  echo "Role Name: $ROLE"
+  echo "Identity Object ID: $IDENTITY_ID"
+  echo "Scope: /subscriptions/$SBC"
+  exit 1
+fi
+
+# Verify role assignment
+ASSIGNMENT_EXISTS=$(az role assignment list --assignee-object-id "$IDENTITY_ID" --query "[?roleDefinitionName=='$ROLE']")
+if [ -z "$ASSIGNMENT_EXISTS" ]; then
+  echo "ERROR: Role assignment for '$ROLE' to identity '$IDENTITY_ID' does not exist."
+  echo "Please check Azure permissions and retry."
+  exit 1
+else
+  echo "Role assignment verified successfully."
+fi
 
 # Get the Network Interface ID of the VM
 NIC_ID=$(az vm show \
