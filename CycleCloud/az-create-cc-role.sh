@@ -9,7 +9,7 @@ unset NAME
 
 # Allow LOCATION, NAME, RESOURCE_GROUP as named or positional parameters
 DEFAULT_LOCATION="EastUS" # East US
-DEFAULT_NAME="Jacomini"    # Set Name to identify your User here
+DEFAULT_NAME="Jacomini"   # Set Name to identify your User here
 DEFAULT_RESOURCE_GROUP="HPC-CC-$DEFAULT_LOCATION-$DEFAULT_NAME"  # Set RESOURCE GROUP name here
 
 # Parse named parameters (e.g., --location "West US" --name "Alice" --resource-group "HPC-CC-Alice")
@@ -41,6 +41,38 @@ done
 LOCATION="${LOCATION:-${POSITIONAL[0]:-$DEFAULT_LOCATION}}"
 NAME="${NAME:-${POSITIONAL[1]:-$DEFAULT_NAME}}"
 RESOURCE_GROUP="${RESOURCE_GROUP:-${POSITIONAL[2]:-$DEFAULT_RESOURCE_GROUP}}"
+
+# Define the run_az_command function
+run_az_command() {
+  local command="$1"
+  echo "Running: $command"
+  eval "$command"
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Command failed - $command" >&2
+    exit 1
+  fi
+}
+
+# Validate user inputs for LOCATION, NAME, and RESOURCE_GROUP
+validate_inputs() {
+  if [[ ! "$LOCATION" =~ ^[a-zA-Z0-9]+$ ]]; then
+    echo "ERROR: LOCATION must only contain alphanumeric characters." >&2
+    exit 1
+  fi
+
+  if [[ ! "$NAME" =~ ^[a-zA-Z0-9]+$ ]]; then
+    echo "ERROR: NAME must only contain alphanumeric characters." >&2
+    exit 1
+  fi
+
+  if [[ ! "$RESOURCE_GROUP" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "ERROR: RESOURCE_GROUP must only contain alphanumeric characters, dashes, or underscores." >&2
+    exit 1
+  fi
+}
+
+# Call the validation function
+validate_inputs
 
 # Normalize and validate storage account name (must be 3-24 lowercase letters/numbers)
 MAXLEN=24
@@ -239,37 +271,65 @@ if az identity show --name "$ID" --resource-group "$RESOURCE_GROUP" &> /dev/null
     exit 1
 fi
 
-az identity create --name "$ID" --resource-group "$RESOURCE_GROUP"
-sleep 30
+# Automatically ensure location consistency for all resources
+EXISTING_RG_LOCATION=$(az group show --name "$RESOURCE_GROUP" --query "location" --output tsv 2>/dev/null)
+if [ -n "$EXISTING_RG_LOCATION" ]; then
+  echo "Resource group '$RESOURCE_GROUP' already exists in location '$EXISTING_RG_LOCATION'. Using existing location."
+  LOCATION="$EXISTING_RG_LOCATION"
+else
+  echo "Creating resource group '$RESOURCE_GROUP' in location '$LOCATION'."
+  run_az_command "az group create --name \"$RESOURCE_GROUP\" --location \"$LOCATION\""
+fi
 
-# Assign the managed identity to the VM
-az vm identity assign \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$VM_NAME" \
-  --identities "$ID"
+# Normalize LOCATION and resource group location to lowercase for comparison
+LOCATION=$(echo "$LOCATION" | tr '[:upper:]' '[:lower:]')
+#EXISTING_RG_LOCATION=$(echo "$EXISTING_RG_LOCATION" | tr '[:upper:]' '[:lower:]')
+
+# Ensure location consistency for all resources
+if [ -n "$EXISTING_RG_LOCATION" ] && [ "$LOCATION" != "$EXISTING_RG_LOCATION" ]; then
+  echo "ERROR: LOCATION '$LOCATION' does not match the existing resource group location '$EXISTING_RG_LOCATION'." >&2
+  exit 1
+fi
+
+# If resource group does not exist, use DEFAULT_LOCATION
+if [ -z "$EXISTING_RG_LOCATION" ]; then
+  LOCATION="$DEFAULT_LOCATION"
+  echo "Resource group does not exist. Using default location: $DEFAULT_LOCATION"
+fi
+
+# Ensure case-insensitive comparison for resource group and managed identity names
+RESOURCE_GROUP=$(echo "$RESOURCE_GROUP" | tr '[:upper:]' '[:lower:]')
+ID=$(echo "$ID" | tr '[:upper:]' '[:lower:]')
+
+# Verify managed identity creation before proceeding
+create_managed_identity() {
+  echo "Creating managed identity: $ID in resource group: $RESOURCE_GROUP and location: $LOCATION"
+  az identity create \
+    --name "$ID" \
+    --resource-group "$RESOURCE_GROUP" \
+    --location "$LOCATION"
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to create managed identity: $ID" >&2
+    exit 1
+  fi
+}
+
+# Call the function to create managed identity
+create_managed_identity
 
 # Retrieve its Object ID
 IDENTITY_ID=$(az identity show \
-  --name $ID \
-  --resource-group $RESOURCE_GROUP \
+  --name "$ID" \
+  --resource-group "$RESOURCE_GROUP" \
   --query 'principalId' \
   --output tsv)
-
-# Assign the custom role to the identity with proper scope
-if az role assignment create \
-  --role "$ROLE" \
-  --assignee-object-id "$IDENTITY_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --scope /subscriptions/$SBC; then
-  echo "Role assignment for '$ROLE' to identity '$IDENTITY_ID' was successful."
-else
-  echo "ERROR: Failed to assign role '$ROLE' to identity '$IDENTITY_ID'."
-  echo "Debugging information:"
-  echo "Role Name: $ROLE"
-  echo "Identity Object ID: $IDENTITY_ID"
-  echo "Scope: /subscriptions/$SBC"
+if [ -z "$IDENTITY_ID" ]; then
+  echo "ERROR: Failed to retrieve Object ID for managed identity: $ID" >&2
   exit 1
 fi
+
+# Assign the custom role to the identity with proper scope
+run_az_command "az role assignment create --role \"$ROLE\" --assignee-object-id \"$IDENTITY_ID\" --assignee-principal-type ServicePrincipal --scope /subscriptions/$SBC"
 
 # Verify role assignment
 ASSIGNMENT_EXISTS=$(az role assignment list --assignee-object-id "$IDENTITY_ID" --query "[?roleDefinitionName=='$ROLE']")
@@ -311,17 +371,49 @@ if [[ -z "$SUBNET_NAME" ]]; then
   exit 1
 fi
 
-# Check if resource group exists
-az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
-# Create storage account
+# Normalize the virtual network name to ensure consistency
+VNET_NAME=$(echo "$SUBNET_ID" | awk -F'/' '{print $(NF-2)}')
 
-az storage account create \
-  --name "$STORAGE_ACCOUNT" \
-  --resource-group "$RESOURCE_GROUP" \
-  --location "$LOCATION" \
-  --sku Standard_LRS \
-  --kind StorageV2 \
-  --allow-shared-key-access true
+# Check if the resource group already exists and retrieve its location
+EXISTING_RG_LOCATION=$(az group show --name "$RESOURCE_GROUP" --query "location" --output tsv 2>/dev/null)
+if [ -n "$EXISTING_RG_LOCATION" ]; then
+  echo "Resource group '$RESOURCE_GROUP' already exists in location '$EXISTING_RG_LOCATION'. Using existing location."
+  LOCATION="$EXISTING_RG_LOCATION"
+else
+  echo "Creating resource group '$RESOURCE_GROUP' in location '$LOCATION'."
+  run_az_command "az group create --name \"$RESOURCE_GROUP\" --location \"$LOCATION\""
+fi
+
+# Ensure storage account creation and validation
+create_storage_account() {
+  echo "Creating storage account: $STORAGE_ACCOUNT in resource group: $RESOURCE_GROUP and location: $LOCATION"
+  run_az_command "az storage account create --name \"$STORAGE_ACCOUNT\" --resource-group \"$RESOURCE_GROUP\" --location \"$LOCATION\" --sku Standard_LRS --kind StorageV2 --allow-shared-key-access true"
+
+  # Validate storage account existence
+  STORAGE_ID=$(az storage account show \
+    --name "$STORAGE_ACCOUNT" \
+    --resource-group "$RESOURCE_GROUP" \
+    --query id \
+    --output tsv)
+  if [ -z "$STORAGE_ID" ]; then
+    echo "ERROR: Failed to retrieve storage account ID for: $STORAGE_ACCOUNT" >&2
+    exit 1
+  fi
+}
+
+# Call the function to create and validate storage account
+create_storage_account
+
+# Ensure private link service ID is valid
+validate_private_link_service_id() {
+  if [ -z "$STORAGE_ID" ]; then
+    echo "ERROR: Private link service ID is invalid or empty." >&2
+    exit 1
+  fi
+}
+
+# Call the validation function
+validate_private_link_service_id
 
 # Get storage account resource ID
 STORAGE_ID=$(az storage account show \
@@ -353,19 +445,37 @@ az network private-endpoint create \
   --subnet "$SUBNET_NAME" \
   --private-connection-resource-id "$STORAGE_ID" \
   --group-id "blob" \
-  --connection-name "${PE_NAME}-conn"
+  --connection-name "${PE_NAME}-conn" \
+  --location "$LOCATION"
 
+# Check if the DNS zone exists
 DNS_ZONE="privatelink.blob.core.windows.net"
-az network private-dns zone create \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$DNS_ZONE"
+EXISTING_DNS_ZONE=$(az network private-dns zone show --resource-group "$RESOURCE_GROUP" --name "$DNS_ZONE" --query "name" --output tsv 2>/dev/null)
 
-az network private-dns link vnet create \
-  --resource-group "$RESOURCE_GROUP" \
-  --zone-name "$DNS_ZONE" \
-  --name "${VNET_NAME}-dns-link" \
-  --virtual-network "$VNET_NAME" \
-  --registration-enabled false
+if [ -n "$EXISTING_DNS_ZONE" ]; then
+  echo "DNS zone '$DNS_ZONE' already exists in resource group '$RESOURCE_GROUP'. Skipping creation."
+else
+  echo "Creating DNS zone '$DNS_ZONE' in resource group '$RESOURCE_GROUP'."
+  az network private-dns zone create \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$DNS_ZONE"
+fi
+
+# Link the DNS zone to the virtual network
+LINK_NAME="${VNET_NAME}-dns-link"
+EXISTING_LINK=$(az network.private-dns.link.vnet show --resource-group "$RESOURCE_GROUP" --zone-name "$DNS_ZONE" --name "$LINK_NAME" --query "name" --output tsv 2>/dev/null)
+
+if [ -n "$EXISTING_LINK" ]; then
+  echo "DNS zone '$DNS_ZONE' is already linked to virtual network '$VNET_NAME'. Skipping link creation."
+else
+  echo "Linking DNS zone '$DNS_ZONE' to virtual network '$VNET_NAME'."
+  az network private-dns link vnet create \
+    --resource-group "$RESOURCE_GROUP" \
+    --zone-name "$DNS_ZONE" \
+    --name "$LINK_NAME" \
+    --virtual-network "$VNET_NAME" \
+    --registration-enabled false
+fi
 
 az network private-endpoint dns-zone-group create \
   --resource-group "$RESOURCE_GROUP" \
@@ -379,6 +489,18 @@ az storage account update \
   --name "$STORAGE_ACCOUNT" \
   --resource-group "$RESOURCE_GROUP" \
   --default-action Deny
+
+# Apply the managed identity to the VM
+apply_identity_to_vm() {
+  echo "Applying managed identity '$ID' to VM '$VM_NAME' in resource group '$RESOURCE_GROUP'."
+  run_az_command "az vm identity assign \
+    --resource-group \"$RESOURCE_GROUP\" \
+    --name \"$VM_NAME\" \
+    --identities \"/subscriptions/$SBC/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$ID\""
+}
+
+# Call the function to apply the managed identity
+apply_identity_to_vm
 
 # Remove the temp file
 rm "$TMPFILE"
