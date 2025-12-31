@@ -177,7 +177,8 @@ while true; do
   fi
 done
 
-ROLE="CycleCloud $SBC_NAME $NAME"        
+# ROLE="CycleCloud $SBC_NAME $NAME"      
+ROLE="CycleCloud $SBC_NAME"      
 ROLE=$(echo "$ROLE" | sed 's/&/and/g')   #  to avoid Invalid
 
 # Print configuration and ask for confirmation
